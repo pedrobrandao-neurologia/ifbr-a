@@ -1,0 +1,873 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IF-BrA - Indice de Funcionalidade Brasileiro</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+    <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        :root{
+            --bg:#f5f5f7;--surface:#fff;--surface-alt:#fafafa;
+            --text-primary:#1d1d1f;--text-secondary:#6e6e73;--text-tertiary:#86868b;
+            --accent:#0071e3;--accent-light:#e8f2ff;
+            --border:#d2d2d7;--border-light:#e8e8ed;
+            --green:#34c759;--green-light:#e8f9ed;
+            --orange:#ff9500;--orange-light:#fff4e5;
+            --red:#ff3b30;--red-light:#ffe5e4;
+            --purple:#af52de;--purple-light:#f5eafa;
+            --yellow:#e6b800;--yellow-light:#fffbe5;
+            --gray-100:#f5f5f7;--gray-200:#e8e8ed;--gray-300:#d2d2d7;
+            --radius:12px;--radius-sm:8px;--radius-lg:16px;--radius-xl:20px;
+            --shadow-sm:0 1px 3px rgba(0,0,0,.04),0 1px 2px rgba(0,0,0,.06);
+            --shadow:0 2px 8px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04);
+            --shadow-lg:0 4px 24px rgba(0,0,0,.06),0 8px 32px rgba(0,0,0,.04);
+            --transition:.2s cubic-bezier(.4,0,.2,1);
+        }
+        body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text-primary);line-height:1.5;-webkit-font-smoothing:antialiased}
+        ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes scaleIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+        .fade-in{animation:fadeIn .4s ease-out forwards}
+        .scale-in{animation:scaleIn .3s ease-out forwards}
+        input:focus,textarea:focus,select:focus{outline:none;box-shadow:0 0 0 3px rgba(0,113,227,.2);border-color:var(--accent)}
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useMemo,useRef}=React;
+
+/* ================================================================
+   SCALE DATA
+   ================================================================ */
+const SCALE={
+    title:"Indice de Funcionalidade Brasileiro Aplicado (IF-BrA)",
+    version:"1.0 - Portaria Interministerial MPS/SDH/MF/MOG/AGU 1/2014",
+    scoreLevels:[
+        {value:25,label:"Totalmente dependente",short:"Dependente",desc:"Nao realiza a atividade ou terceiros realizam por ele.",color:"#ff3b30",bg:"#ffe5e4"},
+        {value:50,label:"Auxilio de terceiros",short:"Com auxilio",desc:"Participa de alguma etapa, mas necessita de preparo, supervisao ou ajuda.",color:"#ff9500",bg:"#fff4e5"},
+        {value:75,label:"Adaptada/modificada",short:"Adaptada",desc:"Realiza de forma adaptada ou mais lentamente, sem depender de terceiros.",color:"#e6b800",bg:"#fffbe5"},
+        {value:100,label:"Independente",short:"Independente",desc:"Sem adaptacao, na velocidade habitual e em seguranca.",color:"#34c759",bg:"#e8f9ed"}
+    ],
+    domains:[
+        {id:"d1",title:"1. Sensorial",items:[
+            {id:"1.1",text:"Observar"},{id:"1.2",text:"Ouvir"}]},
+        {id:"d2",title:"2. Comunicacao",items:[
+            {id:"2.1",text:"Comunicar-se - Recepcao de mensagens"},
+            {id:"2.2",text:"Comunicar-se - Producao de mensagens"},
+            {id:"2.3",text:"Conversar"},
+            {id:"2.4",text:"Discutir"},
+            {id:"2.5",text:"Utilizacao de dispositivos de comunicacao a distancia"}]},
+        {id:"d3",title:"3. Mobilidade",items:[
+            {id:"3.1",text:"Mudar e manter a posicao do corpo"},
+            {id:"3.2",text:"Alcancar, transportar e mover objetos"},
+            {id:"3.3",text:"Movimentos finos da mao"},
+            {id:"3.4",text:"Deslocar-se dentro de casa"},
+            {id:"3.5",text:"Deslocar-se dentro de edificios (exceto a casa)"},
+            {id:"3.6",text:"Deslocar-se fora de casa e de outros edificios"},
+            {id:"3.7",text:"Utilizar transporte coletivo"},
+            {id:"3.8",text:"Utilizar transporte individual como passageiro"}]},
+        {id:"d4",title:"4. Cuidados Pessoais",items:[
+            {id:"4.1",text:"Lavar-se"},
+            {id:"4.2",text:"Cuidar de partes do corpo"},
+            {id:"4.3",text:"Regulacao da miccao"},
+            {id:"4.4",text:"Regulacao da defecacao"},
+            {id:"4.5",text:"Vestir-se"},
+            {id:"4.6",text:"Comer"},
+            {id:"4.7",text:"Beber"},
+            {id:"4.8",text:"Capacidade de identificar agravos a saude"}]},
+        {id:"d5",title:"5. Vida Domestica",items:[
+            {id:"5.1",text:"Preparar refeicoes tipo lanches"},
+            {id:"5.2",text:"Cozinhar"},
+            {id:"5.3",text:"Realizar tarefas domesticas"},
+            {id:"5.4",text:"Manutencao e uso de objetos pessoais e utensilios"},
+            {id:"5.5",text:"Cuidar dos outros"}]},
+        {id:"d6",title:"6. Educacao, Trabalho e Vida Economica",items:[
+            {id:"6.1",text:"Educacao"},
+            {id:"6.2",text:"Qualificacao profissional"},
+            {id:"6.3",text:"Trabalho remunerado"},
+            {id:"6.4",text:"Fazer compras e contratar servicos"},
+            {id:"6.5",text:"Administracao de recursos economicos pessoais"}]},
+        {id:"d7",title:"7. Socializacao e Vida Comunitaria",items:[
+            {id:"7.1",text:"Regular o comportamento nas interacoes"},
+            {id:"7.2",text:"Interagir de acordo com as regras sociais"},
+            {id:"7.3",text:"Relacionamentos com estranhos"},
+            {id:"7.4",text:"Relacionamentos familiares e com pessoas familiares"},
+            {id:"7.5",text:"Relacionamentos intimos"},
+            {id:"7.6",text:"Socializacao"},
+            {id:"7.7",text:"Fazer as proprias escolhas"},
+            {id:"7.8",text:"Vida politica e cidadania"}]}
+    ]
+};
+const TOTAL_ITEMS=SCALE.domains.reduce((a,d)=>a+d.items.length,0);
+
+/* Fuzzy config per Formulario 4 */
+const FUZZY_TYPES=[
+    {
+        key:'auditiva', label:'Deficiencia Auditiva',
+        sensitiveDomains:['d2','d7'],
+        sensitiveDomainLabels:'Comunicacao e Socializacao',
+        scoreRule:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Comunicacao ou Socializacao; OU houve pontuacao 75 em TODAS as atividades destes dominios.',
+        emblemLabel:'A surdez ocorreu antes dos 6 anos.',
+        noHelpLabel:'Nao dispoe do auxilio de terceiros sempre que necessario.'
+    },
+    {
+        key:'intelectual', label:'Deficiencia Intelectual-Cognitiva e Mental',
+        sensitiveDomains:['d5','d7'],
+        sensitiveDomainLabels:'Vida Domestica e Socializacao',
+        scoreRule:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Vida Domestica ou Socializacao; OU houve pontuacao 75 em TODAS as atividades destes dominios.',
+        emblemLabel:'Nao pode ficar sozinho em seguranca.',
+        noHelpLabel:'Nao dispoe do auxilio de terceiros sempre que necessario.'
+    },
+    {
+        key:'motora', label:'Deficiencia Motora',
+        sensitiveDomains:['d3','d4'],
+        sensitiveDomainLabels:'Mobilidade e Cuidados Pessoais',
+        scoreRule:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Mobilidade ou Cuidados Pessoais; OU houve pontuacao 75 em TODAS as atividades destes dominios.',
+        emblemLabel:'Desloca-se exclusivamente em cadeira de rodas.',
+        noHelpLabel:'Nao dispoe do auxilio de terceiros sempre que necessario.'
+    },
+    {
+        key:'visual', label:'Deficiencia Visual',
+        sensitiveDomains:['d3','d5'],
+        sensitiveDomainLabels:'Mobilidade e Vida Domestica',
+        scoreRule:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Mobilidade ou Vida Domestica; OU houve pontuacao 75 em TODAS as atividades destes dominios.',
+        emblemLabel:'A pessoa ja nao enxergava ao nascer.',
+        noHelpLabel:'Nao dispoe do auxilio de terceiros sempre que necessario.'
+    }
+];
+
+/* PDF-safe: strip all non-ASCII */
+const S=(str)=>{
+    if(!str)return'';
+    return str
+        .replace(/á/g,'a').replace(/Á/g,'A').replace(/à/g,'a').replace(/À/g,'A')
+        .replace(/â/g,'a').replace(/Â/g,'A').replace(/ã/g,'a').replace(/Ã/g,'A')
+        .replace(/é/g,'e').replace(/É/g,'E').replace(/ê/g,'e').replace(/Ê/g,'E')
+        .replace(/í/g,'i').replace(/Í/g,'I').replace(/ó/g,'o').replace(/Ó/g,'O')
+        .replace(/ô/g,'o').replace(/Ô/g,'O').replace(/õ/g,'o').replace(/Õ/g,'O')
+        .replace(/ú/g,'u').replace(/Ú/g,'U').replace(/ç/g,'c').replace(/Ç/g,'C')
+        .replace(/ñ/g,'n').replace(/Ñ/g,'N').replace(/[^\x00-\x7F]/g,'');
+};
+
+/* ================================================================
+   FUZZY LOGIC ENGINE
+   ================================================================ */
+function computeFuzzy(fuzzyType, emblematic, noHelp, answers) {
+    if (!fuzzyType) return { active:false, sensitiveDomains:[], minScore:100, scoreConditionMet:false, allConditionsMet:false, conditionDetails:{} };
+
+    const cfg = FUZZY_TYPES.find(f=>f.key===fuzzyType);
+    if (!cfg) return { active:false, sensitiveDomains:[], minScore:100, scoreConditionMet:false, allConditionsMet:false, conditionDetails:{} };
+
+    const sensDomains = cfg.sensitiveDomains;
+
+    // Gather all items from sensitive domains
+    const sensItems = SCALE.domains
+        .filter(d => sensDomains.includes(d.id))
+        .flatMap(d => d.items);
+
+    // Get answered scores in sensitive domains
+    const answeredScores = sensItems
+        .map(i => answers[i.id])
+        .filter(v => v !== undefined);
+
+    const totalSensItems = sensItems.length;
+    const answeredCount = answeredScores.length;
+
+    // CONDITION 1: Score condition (automatic)
+    // "25 ou 50 em alguma atividade" OR "75 em TODAS as atividades"
+    const has25or50 = answeredScores.some(s => s === 25 || s === 50);
+    const allAnswered = answeredCount === totalSensItems;
+    const all75 = allAnswered && answeredScores.every(s => s === 75);
+    const scoreConditionMet = has25or50 || all75;
+
+    // CONDITION 2: Emblematic question (user checkbox)
+    // CONDITION 3: No help (user checkbox)
+    const allConditionsMet = scoreConditionMet && emblematic && noHelp;
+
+    // When all conditions met, find min score across sensitive domains
+    let minScore = 100;
+    if (allConditionsMet) {
+        sensItems.forEach(i => {
+            if (answers[i.id] !== undefined && answers[i.id] < minScore) {
+                minScore = answers[i.id];
+            }
+        });
+    }
+
+    return {
+        active: allConditionsMet,
+        sensitiveDomains: sensDomains,
+        minScore,
+        scoreConditionMet,
+        allConditionsMet,
+        conditionDetails: {
+            has25or50,
+            all75,
+            allAnswered,
+            answeredCount,
+            totalSensItems,
+            emblematic,
+            noHelp
+        }
+    };
+}
+
+/* Compute scores: always returns both raw and fuzzy */
+function computeScores(answers, fuzzyResult) {
+    let rawTotal=0, fuzzyTotal=0, missingCount=0, missingItems=[];
+    let domRaw={}, domFuzzy={};
+
+    SCALE.domains.forEach(dom => {
+        let sr=0, sf=0;
+        dom.items.forEach(item => {
+            const v = answers[item.id];
+            if (v === undefined) {
+                missingCount++;
+                missingItems.push(item.id);
+            } else {
+                sr += v;
+                // For fuzzy: if active and this domain is sensitive, use minScore
+                if (fuzzyResult.active && fuzzyResult.sensitiveDomains.includes(dom.id)) {
+                    sf += fuzzyResult.minScore;
+                } else {
+                    sf += v;
+                }
+            }
+        });
+        domRaw[dom.id] = sr;
+        domFuzzy[dom.id] = sf;
+        rawTotal += sr;
+        fuzzyTotal += sf;
+    });
+
+    return { rawTotal, fuzzyTotal, domRaw, domFuzzy, missingCount, missingItems };
+}
+
+/* ================================================================
+   UI COMPONENTS
+   ================================================================ */
+const NavBar=({progress,answeredCount})=>(
+    <nav style={{position:'sticky',top:0,zIndex:50,background:'rgba(245,245,247,.85)',backdropFilter:'blur(20px) saturate(180%)',WebkitBackdropFilter:'blur(20px) saturate(180%)',borderBottom:'1px solid var(--border-light)'}}>
+        <div style={{maxWidth:960,margin:'0 auto',padding:'12px 24px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <span style={{fontSize:20,fontWeight:700,letterSpacing:'-.02em'}}>IF-BrA</span>
+                <span style={{fontSize:11,color:'var(--text-tertiary)',fontWeight:500,background:'var(--gray-200)',padding:'2px 8px',borderRadius:4}}>v1.0</span>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'var(--text-secondary)'}}>
+                <span>{answeredCount}/{TOTAL_ITEMS}</span>
+                <div style={{width:80,height:4,background:'var(--gray-200)',borderRadius:2,overflow:'hidden'}}>
+                    <div style={{width:`${progress}%`,height:'100%',background:'var(--accent)',borderRadius:2,transition:'width .4s ease'}}/>
+                </div>
+            </div>
+        </div>
+    </nav>
+);
+
+const StepPills=({steps,current,onStep,domainProgress})=>(
+    <div style={{display:'flex',gap:4,overflowX:'auto',padding:'0 24px 8px',WebkitOverflowScrolling:'touch'}}>
+        {steps.map((s,i)=>{
+            const a=i===current, done=(domainProgress[i]||0)===100;
+            return(<button key={i} onClick={()=>onStep(i)} style={{
+                flex:'0 0 auto',padding:'8px 16px',borderRadius:100,border:'none',cursor:'pointer',
+                fontSize:13,fontWeight:a?600:400,whiteSpace:'nowrap',
+                background:a?'var(--text-primary)':done?'var(--green-light)':'var(--surface)',
+                color:a?'#fff':done?'#1a8c3a':'var(--text-secondary)',
+                boxShadow:a?'var(--shadow)':'var(--shadow-sm)',transition:'all var(--transition)',
+            }}>{done&&!a?'OK  ':''}{s}</button>);
+        })}
+    </div>
+);
+
+const ScoreBtn=({level,selected,onClick})=>{
+    const on=selected===level.value;
+    return(<button onClick={onClick} style={{
+        flex:1,minWidth:0,padding:'14px 6px',border:`2px solid ${on?level.color:'var(--border-light)'}`,
+        borderRadius:'var(--radius)',cursor:'pointer',textAlign:'center',
+        background:on?level.bg:'var(--surface)',transition:'all var(--transition)',
+        transform:on?'scale(1.02)':'scale(1)',boxShadow:on?`0 2px 12px ${level.color}22`:'none',
+    }}>
+        <div style={{fontSize:22,fontWeight:700,color:on?level.color:'var(--text-tertiary)',lineHeight:1,marginBottom:4}}>{level.value}</div>
+        <div style={{fontSize:11,fontWeight:500,color:on?level.color:'var(--text-tertiary)',lineHeight:1.2}}>{level.short}</div>
+    </button>);
+};
+
+const ItemCard=({item,answer,comment,fuzzyActive,fuzzyMin,onAnswer,onComment})=>{
+    const overridden=fuzzyActive&&answer!==undefined&&answer!==fuzzyMin;
+    const [showCmt,setShowCmt]=useState(!!comment);
+    return(
+        <div className="fade-in" style={{
+            background:'var(--surface)',borderRadius:'var(--radius-lg)',padding:'20px 24px',boxShadow:'var(--shadow-sm)',
+            border:answer!==undefined?`1px solid ${overridden?'var(--purple)':'var(--border-light)'}`:'1px solid var(--border)',
+            transition:'all var(--transition)',
+        }}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:14}}>
+                <div>
+                    <span style={{fontSize:12,fontWeight:600,color:'var(--text-tertiary)',letterSpacing:'.04em'}}>{item.id}</span>
+                    <h3 style={{fontSize:16,fontWeight:600,color:'var(--text-primary)',marginTop:2,lineHeight:1.3}}>{item.text}</h3>
+                </div>
+                {answer!==undefined&&(
+                    <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                        <div style={{
+                            width:32,height:32,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
+                            background:overridden?'var(--purple-light)':'var(--green-light)',
+                            color:overridden?'var(--purple)':'var(--green)',fontSize:13,fontWeight:700
+                        }}>{answer}</div>
+                        {overridden&&<div style={{display:'flex',alignItems:'center',gap:2}}>
+                            <span style={{color:'var(--text-tertiary)',fontSize:14}}>-&gt;</span>
+                            <div style={{width:32,height:32,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--purple-light)',color:'var(--purple)',fontSize:13,fontWeight:700}}>{fuzzyMin}</div>
+                        </div>}
+                    </div>
+                )}
+            </div>
+            <div style={{display:'flex',gap:8}}>
+                {SCALE.scoreLevels.map(l=>(<ScoreBtn key={l.value} level={l} selected={answer} onClick={()=>onAnswer(item.id,l.value)}/>))}
+            </div>
+            {overridden&&(
+                <div style={{marginTop:10,padding:'8px 12px',background:'var(--purple-light)',borderRadius:'var(--radius-sm)',fontSize:12,color:'var(--purple)',fontWeight:500}}>
+                    Logica fuzzy: nota original {answer}, corrigida para {fuzzyMin}
+                </div>
+            )}
+            <div style={{marginTop:12}}>
+                {!showCmt?(<button onClick={()=>setShowCmt(true)} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'var(--text-tertiary)',padding:'4px 0'}}>+ Adicionar comentario</button>):
+                (<input type="text" value={comment||''} onChange={e=>onComment(item.id,e.target.value)} placeholder="Barreiras ambientais, produtos, apoio, atitudes..." style={{width:'100%',padding:'10px 14px',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',fontSize:13,color:'var(--text-primary)',background:'var(--surface-alt)',fontFamily:'inherit'}}/>)}
+            </div>
+        </div>
+    );
+};
+
+/* ================================================================
+   CONDITION INDICATOR
+   ================================================================ */
+const ConditionRow=({met,label,detail,auto})=>(
+    <div style={{display:'flex',alignItems:'flex-start',gap:12,padding:'10px 14px',background:met?'#34c75910':'#ff3b3008',borderRadius:'var(--radius-sm)',marginBottom:8,border:`1px solid ${met?'#34c75930':'#ff3b3020'}`}}>
+        <div style={{width:22,height:22,borderRadius:'50%',background:met?'var(--green)':'var(--gray-300)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,marginTop:1}}>
+            {met?'OK':'--'}
+        </div>
+        <div style={{fontSize:13,flex:1}}>
+            <div style={{fontWeight:600,color:'var(--text-primary)',display:'flex',alignItems:'center',gap:6}}>
+                {label}
+                {auto&&<span style={{fontSize:10,color:'var(--text-tertiary)',fontWeight:500,background:'var(--gray-200)',padding:'1px 6px',borderRadius:4}}>automatico</span>}
+            </div>
+            {detail&&<div style={{color:'var(--text-secondary)',marginTop:2,lineHeight:1.4}}>{detail}</div>}
+        </div>
+    </div>
+);
+
+/* ================================================================
+   RESULTS PANEL
+   ================================================================ */
+const ResultsPanel=({scores,metadata,fuzzyState,fuzzyResult,answers,comments})=>{
+    const showFuzzy = fuzzyState.type && fuzzyResult.active;
+    return(
+        <div className="scale-in" style={{maxWidth:960,margin:'0 auto',padding:'40px 24px 80px'}}>
+            <div style={{textAlign:'center',marginBottom:40}}>
+                <h1 style={{fontSize:28,fontWeight:700,letterSpacing:'-.02em',marginBottom:8}}>Resultado da Avaliacao</h1>
+                <p style={{color:'var(--text-secondary)',fontSize:15}}>
+                    {metadata.participantId||'Participante'} — {metadata.evaluationDate}
+                    {metadata.evaluatorName&&` — Avaliador: ${metadata.evaluatorName}`}
+                </p>
+            </div>
+
+            {/* Score cards */}
+            <div style={{display:'grid',gridTemplateColumns:showFuzzy?'1fr 1fr':'1fr',gap:16,marginBottom:24}}>
+                <div style={{background:'var(--surface)',borderRadius:'var(--radius-xl)',padding:28,boxShadow:'var(--shadow-lg)',textAlign:'center'}}>
+                    <div style={{fontSize:12,fontWeight:600,color:'var(--text-tertiary)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>Escore original (avaliador unico)</div>
+                    <div style={{fontSize:48,fontWeight:700,letterSpacing:'-.03em',lineHeight:1}}>{scores.rawTotal}</div>
+                    <div style={{fontSize:14,color:'var(--text-tertiary)',marginTop:4}}>de 4.100 pontos</div>
+                    <div style={{width:'100%',maxWidth:280,height:5,background:'var(--gray-200)',borderRadius:3,margin:'16px auto 0',overflow:'hidden'}}>
+                        <div style={{width:`${Math.round(scores.rawTotal/4100*100)}%`,height:'100%',background:'var(--accent)',borderRadius:3,transition:'width .6s ease'}}/>
+                    </div>
+                </div>
+                {showFuzzy&&(
+                    <div style={{background:'var(--surface)',borderRadius:'var(--radius-xl)',padding:28,boxShadow:'var(--shadow-lg)',textAlign:'center',borderLeft:'4px solid var(--purple)'}}>
+                        <div style={{fontSize:12,fontWeight:600,color:'var(--purple)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>Escore com logica fuzzy</div>
+                        <div style={{fontSize:48,fontWeight:700,letterSpacing:'-.03em',lineHeight:1,color:'var(--purple)'}}>{scores.fuzzyTotal}</div>
+                        <div style={{fontSize:14,color:'var(--text-tertiary)',marginTop:4}}>de 4.100 pontos</div>
+                        <div style={{width:'100%',maxWidth:280,height:5,background:'var(--purple-light)',borderRadius:3,margin:'16px auto 0',overflow:'hidden'}}>
+                            <div style={{width:`${Math.round(scores.fuzzyTotal/4100*100)}%`,height:'100%',background:'var(--purple)',borderRadius:3,transition:'width .6s ease'}}/>
+                        </div>
+                        <div style={{fontSize:13,color:'var(--text-secondary)',marginTop:12}}>
+                            Diferenca: {scores.rawTotal-scores.fuzzyTotal} pontos reduzidos
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {scores.missingCount>0&&(
+                <div style={{padding:'12px 20px',borderRadius:'var(--radius)',background:'var(--orange-light)',border:'1px solid #ff950030',fontSize:13,color:'#996000',fontWeight:500,marginBottom:20,textAlign:'center'}}>
+                    {scores.missingCount} {scores.missingCount===1?'item pendente':'itens pendentes'} — preencha todos os itens para obter o escore final.
+                </div>
+            )}
+
+            <div style={{padding:'12px 20px',borderRadius:'var(--radius)',background:'var(--accent-light)',border:'1px solid #0071e330',fontSize:13,color:'#005bb5',marginBottom:24,lineHeight:1.6}}>
+                <strong>Nota:</strong> A classificacao do grau de deficiencia (grave, moderada, leve) somente pode ser determinada apos a soma dos escores dos dois avaliadores (Pericia Medica + Servico Social), conforme a LC 142/2013. O escore acima refere-se a um unico avaliador (maximo 4.100 pontos).
+            </div>
+
+            {/* Fuzzy summary */}
+            {fuzzyState.type&&(
+                <div style={{background:'var(--surface)',borderRadius:'var(--radius-xl)',padding:24,boxShadow:'var(--shadow)',marginBottom:24,borderLeft:'4px solid var(--purple)'}}>
+                    <h3 style={{fontSize:14,fontWeight:600,color:'var(--purple)',marginBottom:12,textTransform:'uppercase',letterSpacing:'.04em'}}>Modelo linguistico fuzzy — Formulario 4</h3>
+                    <div style={{fontSize:14,color:'var(--text-secondary)',lineHeight:1.7}}>
+                        {(()=>{const c=FUZZY_TYPES.find(f=>f.key===fuzzyState.type);return c?(<>
+                            <p><strong>Tipo:</strong> {c.label}</p>
+                            <p><strong>Dominios sensiveis:</strong> {c.sensitiveDomainLabels}</p>
+                            <p><strong>Condicao do escore:</strong> {fuzzyResult.scoreConditionMet?'Preenchida':'Nao preenchida'}
+                                {fuzzyResult.conditionDetails.has25or50&&' (nota 25 ou 50 detectada)'}
+                                {fuzzyResult.conditionDetails.all75&&' (todas as atividades com nota 75)'}
+                            </p>
+                            <p><strong>Questao emblematica:</strong> {fuzzyState.emblematic?'Sim':'Nao'}</p>
+                            <p><strong>Auxilio de terceiros indisponivel:</strong> {fuzzyState.noHelp?'Sim':'Nao'}</p>
+                            <p style={{marginTop:8,fontWeight:600,color:fuzzyResult.active?'var(--green)':'var(--red)'}}>
+                                {fuzzyResult.active
+                                    ?`ATIVADA — nota minima ${fuzzyResult.minScore} aplicada a todas as atividades dos dominios sensiveis.`
+                                    :'NAO ATIVADA — uma ou mais condicoes nao foram preenchidas.'}
+                            </p>
+                            {fuzzyResult.active&&<p><strong>Diferenca no escore:</strong> {scores.rawTotal-scores.fuzzyTotal} pontos</p>}
+                        </>):null;})()}
+                    </div>
+                </div>
+            )}
+
+            {/* Detail by item */}
+            <div style={{background:'var(--surface)',borderRadius:'var(--radius-xl)',padding:24,boxShadow:'var(--shadow)',marginBottom:24}}>
+                <h3 style={{fontSize:14,fontWeight:600,color:'var(--text-tertiary)',marginBottom:16,textTransform:'uppercase',letterSpacing:'.04em'}}>Detalhamento por atividade</h3>
+                {SCALE.domains.map(dom=>{
+                    const isSens=fuzzyResult.active&&fuzzyResult.sensitiveDomains.includes(dom.id);
+                    const dR=scores.domRaw[dom.id];
+                    const dF=isSens?scores.domFuzzy[dom.id]:dR;
+                    const mx=dom.items.length*100;
+                    return(
+                        <div key={dom.id} style={{marginBottom:24}}>
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:'2px solid var(--border-light)',marginBottom:8}}>
+                                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                    <span style={{fontSize:14,fontWeight:700}}>{dom.title}</span>
+                                    {isSens&&<span style={{fontSize:10,background:'var(--purple-light)',color:'var(--purple)',padding:'2px 8px',borderRadius:100,fontWeight:600}}>FUZZY</span>}
+                                </div>
+                                <div style={{display:'flex',gap:16,fontSize:13}}>
+                                    <span style={{color:'var(--text-secondary)'}}>Original: <strong>{dR}</strong>/{mx}</span>
+                                    {isSens&&<span style={{color:'var(--purple)'}}>Fuzzy: <strong>{dF}</strong>/{mx}</span>}
+                                </div>
+                            </div>
+                            {/* Column header */}
+                            <div style={{display:'flex',alignItems:'center',gap:12,padding:'4px 0',fontSize:11,color:'var(--text-tertiary)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.03em',borderBottom:'1px solid var(--gray-100)'}}>
+                                <span style={{minWidth:28}}>Item</span>
+                                <span style={{flex:1}}>Atividade</span>
+                                <span style={{minWidth:40,textAlign:'right'}}>Nota</span>
+                                {isSens&&<span style={{minWidth:40,textAlign:'right',color:'var(--purple)'}}>Fuzzy</span>}
+                                <span style={{minWidth:100}}>Comentario</span>
+                            </div>
+                            {dom.items.map(item=>{
+                                const raw=answers[item.id];
+                                const fin=isSens&&raw!==undefined?fuzzyResult.minScore:raw;
+                                const changed=isSens&&raw!==undefined&&raw!==fin;
+                                return(
+                                    <div key={item.id} style={{display:'flex',alignItems:'center',gap:12,padding:'5px 0',fontSize:13,borderBottom:'1px solid var(--gray-100)'}}>
+                                        <span style={{color:'var(--text-tertiary)',minWidth:28,fontFamily:'monospace',fontSize:12}}>{item.id}</span>
+                                        <span style={{flex:1,color:'var(--text-primary)'}}>{item.text}</span>
+                                        <span style={{fontWeight:600,minWidth:40,textAlign:'right',color:raw!==undefined?(SCALE.scoreLevels.find(l=>l.value===raw)?.color||'var(--text-secondary)'):'var(--text-tertiary)'}}>
+                                            {raw!==undefined?raw:'--'}
+                                        </span>
+                                        {isSens&&<span style={{fontWeight:600,minWidth:40,textAlign:'right',color:changed?'var(--purple)':'var(--text-tertiary)'}}>
+                                            {raw!==undefined?fin:'--'}
+                                        </span>}
+                                        <span style={{fontSize:11,color:'var(--text-tertiary)',minWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{comments[item.id]||''}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Reference */}
+            <div style={{background:'var(--surface)',borderRadius:'var(--radius-xl)',padding:24,boxShadow:'var(--shadow)',marginBottom:24}}>
+                <h3 style={{fontSize:14,fontWeight:600,color:'var(--text-tertiary)',marginBottom:16,textTransform:'uppercase',letterSpacing:'.04em'}}>Referencia — Faixas de classificacao LC 142/2013</h3>
+                <p style={{fontSize:13,color:'var(--text-secondary)',marginBottom:12,lineHeight:1.6}}>As faixas abaixo aplicam-se ao escore combinado dos dois avaliadores (maximo 8.200 pontos).</p>
+                {[
+                    {l:'Grave',r:'Ate 5.739',y:'25 anos de contribuicao (H) / 20 anos (M)'},
+                    {l:'Moderada',r:'5.740 a 6.354',y:'29 anos (H) / 24 anos (M)'},
+                    {l:'Leve',r:'6.355 a 7.584',y:'33 anos (H) / 28 anos (M)'},
+                    {l:'Insuficiente',r:'7.585 ou mais',y:'Nao faz jus a aposentadoria especial'},
+                ].map((f,i)=>(
+                    <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 16px',borderRadius:'var(--radius-sm)',marginBottom:4,background:i%2===0?'var(--surface-alt)':'transparent'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:12}}>
+                            <span style={{fontWeight:600,fontSize:14,minWidth:90}}>{f.l}</span>
+                            <span style={{fontSize:13,color:'var(--text-secondary)',fontFamily:'monospace'}}>{f.r}</span>
+                        </div>
+                        <span style={{fontSize:12,color:'var(--text-tertiary)',textAlign:'right'}}>{f.y}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+
+/* ================================================================
+   MAIN APP
+   ================================================================ */
+const App=()=>{
+    const [metadata,setMeta]=useState({participantId:'',evaluatorName:'',evaluationDate:new Date().toISOString().split('T')[0],center:'',observations:''});
+    const [answers,setAnswers]=useState({});
+    const [comments,setComments]=useState({});
+    const [consent,setConsent]=useState(false);
+    const [fuzzyState,setFuzzyState]=useState({type:'',emblematic:false,noHelp:false});
+    const [step,setStep]=useState(0);
+
+    /* Persistence */
+    useEffect(()=>{try{const s=localStorage.getItem('ifbra_v4');if(s){const p=JSON.parse(s);if(p.answers)setAnswers(p.answers);if(p.comments)setComments(p.comments);if(p.metadata)setMeta(p.metadata);if(p.fuzzyState)setFuzzyState(p.fuzzyState);if(p.consent)setConsent(p.consent);}}catch(e){}},[]);
+    useEffect(()=>{if(consent)localStorage.setItem('ifbra_v4',JSON.stringify({answers,comments,metadata,fuzzyState,consent}));else localStorage.removeItem('ifbra_v4');},[answers,comments,metadata,fuzzyState,consent]);
+
+    const handleAnswer=(id,val)=>setAnswers(p=>({...p,[id]:val}));
+    const handleComment=(id,txt)=>setComments(p=>({...p,[id]:txt}));
+    const fillDomain=(domId)=>{const dom=SCALE.domains.find(d=>d.id===domId);if(!dom)return;setAnswers(prev=>{const n={...prev};dom.items.forEach(i=>{n[i.id]=100;});return n;});};
+
+    /* Compute fuzzy */
+    const fuzzyResult = useMemo(()=>
+        computeFuzzy(fuzzyState.type,fuzzyState.emblematic,fuzzyState.noHelp,answers),
+    [fuzzyState,answers]);
+
+    /* Compute scores */
+    const scores = useMemo(()=>computeScores(answers,fuzzyResult),[answers,fuzzyResult]);
+
+    const domainProgress=useMemo(()=>{
+        const p=[100,100];
+        SCALE.domains.forEach(dom=>{const a=dom.items.filter(i=>answers[i.id]!==undefined).length;p.push(Math.round(a/dom.items.length*100));});
+        return p;
+    },[answers]);
+
+    const answeredCount=TOTAL_ITEMS-scores.missingCount;
+    const progress=Math.round(answeredCount/TOTAL_ITEMS*100);
+    const stepNames=['Identificacao','Fuzzy',...SCALE.domains.map(d=>d.title.replace(/^\d+\.\s*/,'')),'Resultado'];
+
+    const goStep=s=>{setStep(s);window.scrollTo({top:0,behavior:'smooth'});};
+    const nextStep=()=>goStep(Math.min(step+1,stepNames.length-1));
+    const prevStep=()=>goStep(Math.max(step-1,0));
+
+    /* EXPORTS */
+    const gfn=ext=>`IFBrA_${metadata.participantId||'anon'}_${metadata.evaluationDate}.${ext}`;
+
+    const exportJSON=()=>{
+        const cfg=FUZZY_TYPES.find(f=>f.key===fuzzyState.type);
+        const payload={
+            metadata:{...metadata,timestamp:new Date().toISOString(),scale:SCALE.title,version:SCALE.version},
+            fuzzyConfig:{type:fuzzyState.type,typeLabel:cfg?.label||'',emblematic:fuzzyState.emblematic,noHelp:fuzzyState.noHelp,
+                active:fuzzyResult.active,scoreConditionMet:fuzzyResult.scoreConditionMet,minScoreApplied:fuzzyResult.active?fuzzyResult.minScore:null,
+                sensitiveDomains:fuzzyResult.sensitiveDomains},
+            scores:{rawTotal:scores.rawTotal,fuzzyTotal:fuzzyResult.active?scores.fuzzyTotal:null,maxSingleEvaluator:4100,
+                fuzzyDifference:fuzzyResult.active?scores.rawTotal-scores.fuzzyTotal:0},
+            domains:SCALE.domains.map(d=>{
+                const isSens=fuzzyResult.active&&fuzzyResult.sensitiveDomains.includes(d.id);
+                return{id:d.id,title:d.title,rawScore:scores.domRaw[d.id],fuzzyScore:isSens?scores.domFuzzy[d.id]:null,maxScore:d.items.length*100,fuzzyApplied:isSens,
+                    items:d.items.map(i=>({id:i.id,text:i.text,rawScore:answers[i.id]??null,fuzzyScore:(isSens&&answers[i.id]!==undefined)?fuzzyResult.minScore:null,comment:comments[i.id]||''}))};
+            })
+        };
+        const b=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+        const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=gfn('json');a.click();
+    };
+
+    const exportCSV=()=>{
+        let h=['participant_id','evaluator','date','center','raw_total','fuzzy_total','fuzzy_active','fuzzy_type','fuzzy_min_score','max_single_evaluator'];
+        let r=[metadata.participantId,metadata.evaluatorName,metadata.evaluationDate,metadata.center,scores.rawTotal,fuzzyResult.active?scores.fuzzyTotal:'',fuzzyResult.active,fuzzyState.type||'',fuzzyResult.active?fuzzyResult.minScore:'',4100];
+        SCALE.domains.forEach(d=>{
+            const isSens=fuzzyResult.active&&fuzzyResult.sensitiveDomains.includes(d.id);
+            h.push(`${d.id}_raw`,`${d.id}_fuzzy`,`${d.id}_max`);
+            r.push(scores.domRaw[d.id],isSens?scores.domFuzzy[d.id]:'',d.items.length*100);
+            d.items.forEach(i=>{
+                h.push(`item_${i.id}_raw`,`item_${i.id}_fuzzy`,`item_${i.id}_comment`);
+                r.push(answers[i.id]??'',(isSens&&answers[i.id]!==undefined)?fuzzyResult.minScore:'',`"${(comments[i.id]||'').replace(/"/g,'""')}"`);
+            });
+        });
+        const b=new Blob([h.join(',')+'\n'+r.join(',')],{type:'text/csv;charset=utf-8;'});
+        const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=gfn('csv');a.click();
+    };
+
+    const exportPDF=()=>{
+        const{jsPDF}=window.jspdf;
+        const doc=new jsPDF();
+        const showFuzzy=fuzzyState.type&&fuzzyResult.active;
+        const cfg=FUZZY_TYPES.find(f=>f.key===fuzzyState.type);
+
+        doc.setFontSize(18);doc.setFont(undefined,'bold');
+        doc.text(S('Relatorio IF-BrA'),14,20);
+        doc.setFontSize(9);doc.setFont(undefined,'normal');
+        doc.text(S(SCALE.version),14,26);
+        doc.setDrawColor(200);doc.line(14,29,196,29);
+
+        let y=35;doc.setFontSize(10);
+        doc.text(`Participante: ${S(metadata.participantId||'---')}`,14,y);y+=5;
+        doc.text(`Avaliador: ${S(metadata.evaluatorName||'---')}`,14,y);y+=5;
+        doc.text(`Data: ${metadata.evaluationDate}`,14,y);y+=5;
+        doc.text(`Centro: ${S(metadata.center||'---')}`,14,y);y+=10;
+
+        doc.setFontSize(13);doc.setFont(undefined,'bold');
+        doc.text(`Escore original (avaliador unico): ${scores.rawTotal} / 4.100`,14,y);y+=7;
+        if(showFuzzy){doc.text(`Escore com logica fuzzy: ${scores.fuzzyTotal} / 4.100`,14,y);y+=7;
+            doc.setFontSize(10);doc.setFont(undefined,'normal');
+            doc.text(`Diferenca: ${scores.rawTotal-scores.fuzzyTotal} pontos reduzidos pela logica fuzzy`,14,y);y+=6;
+        }
+
+        doc.setFontSize(9);doc.setFont(undefined,'italic');
+        doc.text(S('A classificacao requer a soma dos escores dos dois avaliadores (max. 8.200).'),14,y);y+=6;
+        doc.setFont(undefined,'normal');
+
+        if(fuzzyState.type){
+            y+=2;
+            doc.setFontSize(10);doc.setFont(undefined,'bold');
+            doc.text(S(`Logica Fuzzy - Formulario 4: ${cfg?.label||''}`),14,y);y+=5;
+            doc.setFont(undefined,'normal');doc.setFontSize(9);
+            doc.text(S(`Dominios sensiveis: ${cfg?.sensitiveDomainLabels||''}`),14,y);y+=4;
+            doc.text(`Condicao do escore: ${fuzzyResult.scoreConditionMet?'Preenchida':'Nao preenchida'}`,14,y);y+=4;
+            doc.text(S(`Questao emblematica: ${fuzzyState.emblematic?'Sim':'Nao'} - ${cfg?.emblemLabel||''}`),14,y);y+=4;
+            doc.text(`Auxilio de terceiros indisponivel: ${fuzzyState.noHelp?'Sim':'Nao'}`,14,y);y+=4;
+            doc.text(`Status: ${fuzzyResult.active?'ATIVADA - nota minima '+fuzzyResult.minScore+' aplicada':'NAO ATIVADA'}`,14,y);y+=6;
+        }
+
+        // Detail table
+        y+=2;
+        doc.setFontSize(11);doc.setFont(undefined,'bold');
+        doc.text('Detalhamento por Atividade',14,y);y+=4;
+
+        const rows=[];
+        SCALE.domains.forEach(d=>{
+            const isSens=showFuzzy&&fuzzyResult.sensitiveDomains.includes(d.id);
+            const dR=scores.domRaw[d.id],dF=isSens?scores.domFuzzy[d.id]:dR,mx=d.items.length*100;
+            let hdr=S(d.title)+` | Original: ${dR}/${mx}`;
+            if(isSens)hdr+=` | Fuzzy: ${dF}/${mx}`;
+            rows.push([{content:hdr,colSpan:5,styles:{fillColor:[235,235,240],fontStyle:'bold',fontSize:9}}]);
+            d.items.forEach(i=>{
+                const raw=answers[i.id];
+                const fin=(isSens&&raw!==undefined)?fuzzyResult.minScore:raw;
+                rows.push([i.id,S(i.text),raw!==undefined?String(raw):'---',(isSens&&raw!==undefined)?String(fin):'',S(comments[i.id]||'')]);
+            });
+        });
+
+        doc.autoTable({
+            startY:y,
+            head:[[S('#'),S('Atividade'),'Nota',showFuzzy?'Fuzzy':'',S('Comentario')]],
+            body:rows,theme:'grid',
+            styles:{fontSize:8,font:'helvetica',cellPadding:2},
+            headStyles:{fillColor:[30,30,30]},
+            columnStyles:{0:{cellWidth:10},1:{cellWidth:70},2:{cellWidth:14},3:{cellWidth:14}}
+        });
+
+        const lastY=doc.lastAutoTable.finalY+10;
+        if(lastY<260){
+            doc.setFontSize(9);doc.setFont(undefined,'bold');
+            doc.text(S('Faixas LC 142/2013 (escore combinado 2 avaliadores):'),14,lastY);
+            doc.setFont(undefined,'normal');doc.setFontSize(8);
+            doc.text(S('Grave: ate 5.739 | Moderada: 5.740 a 6.354 | Leve: 6.355 a 7.584 | Insuficiente: 7.585+'),14,lastY+5);
+        }
+
+        if(metadata.observations){doc.addPage();doc.setFontSize(12);doc.setFont(undefined,'bold');doc.text(S('Observacoes Gerais'),14,20);doc.setFontSize(10);doc.setFont(undefined,'normal');doc.text(doc.splitTextToSize(S(metadata.observations),180),14,28);}
+        doc.save(gfn('pdf'));
+    };
+
+    const handleReset=()=>{if(!confirm('Apagar todos os dados e recomecar?'))return;setAnswers({});setComments({});setMeta({participantId:'',evaluatorName:'',evaluationDate:new Date().toISOString().split('T')[0],center:'',observations:''});setFuzzyState({type:'',emblematic:false,noHelp:false});setStep(0);localStorage.removeItem('ifbra_v4');};
+
+    const domainIdx=step-2;
+    const currentDomain=domainIdx>=0&&domainIdx<SCALE.domains.length?SCALE.domains[domainIdx]:null;
+
+    return(
+        <div style={{minHeight:'100vh',display:'flex',flexDirection:'column'}}>
+            <NavBar progress={progress} answeredCount={answeredCount}/>
+            <div style={{padding:'12px 0 4px'}}><StepPills steps={stepNames} current={step} onStep={goStep} domainProgress={domainProgress}/></div>
+
+            <main style={{flex:1,maxWidth:720,width:'100%',margin:'0 auto',padding:'20px 24px 120px'}}>
+
+                {/* STEP 0 */}
+                {step===0&&(
+                    <div className="fade-in">
+                        <div style={{textAlign:'center',marginBottom:32,paddingTop:16}}>
+                            <h1 style={{fontSize:28,fontWeight:700,letterSpacing:'-.02em',marginBottom:8}}>Indice de Funcionalidade Brasileiro</h1>
+                            <p style={{color:'var(--text-secondary)',fontSize:14,maxWidth:480,margin:'0 auto'}}>Avaliacao para classificacao e concessao de aposentadoria da pessoa com deficiencia — LC 142/2013.</p>
+                        </div>
+                        <div style={cardSt}>
+                            <h2 style={secTit}>Identificacao</h2>
+                            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                                <Inp label="ID / Nome do participante" value={metadata.participantId} onChange={v=>setMeta({...metadata,participantId:v})}/>
+                                <Inp label="Avaliador (nome / registro)" value={metadata.evaluatorName} onChange={v=>setMeta({...metadata,evaluatorName:v})}/>
+                                <Inp label="Data da avaliacao" type="date" value={metadata.evaluationDate} onChange={v=>setMeta({...metadata,evaluationDate:v})}/>
+                                <Inp label="Centro / local" value={metadata.center} onChange={v=>setMeta({...metadata,center:v})}/>
+                            </div>
+                            <div style={{marginTop:16}}><Inp label="Observacoes gerais" value={metadata.observations} onChange={v=>setMeta({...metadata,observations:v})} multiline/></div>
+                        </div>
+                        <div style={{...cardSt,marginTop:16}}>
+                            <label style={chkSt}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} style={chkIn}/><div><strong>Salvar rascunho</strong><span style={{display:'block',fontSize:12,color:'var(--text-tertiary)'}}>Armazena temporariamente neste navegador. Nenhum dado e enviado pela internet.</span></div></label>
+                        </div>
+                    </div>
+                )}
+
+                {/* STEP 1: Fuzzy */}
+                {step===1&&(
+                    <div className="fade-in">
+                        <div style={{textAlign:'center',marginBottom:24}}>
+                            <h1 style={{fontSize:24,fontWeight:700}}>Formulario 4 — Modelo Linguistico Fuzzy</h1>
+                            <p style={{color:'var(--text-secondary)',fontSize:14,maxWidth:520,margin:'8px auto 0'}}>Identifique situacoes de maior risco funcional. Quando as tres condicoes forem preenchidas, a menor nota nos dominios sensiveis sera aplicada a todas as atividades daqueles dominios.</p>
+                        </div>
+                        <div style={{...cardSt,borderLeft:'4px solid var(--purple)'}}>
+                            <label style={{display:'block',fontSize:14,fontWeight:600,color:'var(--text-secondary)',marginBottom:8}}>Tipo de deficiencia principal</label>
+                            <select value={fuzzyState.type} onChange={e=>setFuzzyState({...fuzzyState,type:e.target.value})} style={selSt}>
+                                <option value="">Nenhuma / nao se aplica</option>
+                                {FUZZY_TYPES.map(f=>(<option key={f.key} value={f.key}>{f.label}</option>))}
+                            </select>
+
+                            {fuzzyState.type&&(()=>{
+                                const cfg=FUZZY_TYPES.find(f=>f.key===fuzzyState.type);
+                                if(!cfg) return null;
+                                return(
+                                    <div style={{marginTop:20,padding:20,background:'var(--purple-light)',borderRadius:'var(--radius)',border:'1px solid #af52de30'}}>
+                                        <p style={{fontSize:13,fontWeight:600,color:'var(--purple)',marginBottom:4}}>
+                                            {cfg.label}
+                                        </p>
+                                        <p style={{fontSize:13,color:'var(--text-secondary)',marginBottom:16}}>
+                                            Dominios sensiveis: <strong>{cfg.sensitiveDomainLabels}</strong>
+                                        </p>
+
+                                        {/* Condition 1: Score (automatic) */}
+                                        <ConditionRow
+                                            met={fuzzyResult.scoreConditionMet}
+                                            auto={true}
+                                            label="Condicao 1: Escore nos dominios sensiveis"
+                                            detail={<>
+                                                <span>{cfg.scoreRule}</span>
+                                                {fuzzyResult.conditionDetails.answeredCount!==undefined&&(
+                                                    <div style={{marginTop:6,fontSize:12,color:'var(--text-tertiary)'}}>
+                                                        {fuzzyResult.conditionDetails.answeredCount} de {fuzzyResult.conditionDetails.totalSensItems} atividades respondidas nos dominios sensiveis.
+                                                        {fuzzyResult.conditionDetails.has25or50&&' Detectada nota 25 ou 50.'}
+                                                        {fuzzyResult.conditionDetails.all75&&' Todas com nota 75.'}
+                                                        {!fuzzyResult.scoreConditionMet&&fuzzyResult.conditionDetails.answeredCount>0&&' Nenhuma nota 25/50 detectada e nem todas sao 75.'}
+                                                    </div>
+                                                )}
+                                            </>}
+                                        />
+
+                                        {/* Condition 2: Emblematic */}
+                                        <label style={{cursor:'pointer',display:'block'}}>
+                                            <div style={{display:'flex',alignItems:'flex-start',gap:12,padding:'10px 14px',background:fuzzyState.emblematic?'#34c75910':'white',borderRadius:'var(--radius-sm)',marginBottom:8,border:`1px solid ${fuzzyState.emblematic?'#34c75930':'var(--border-light)'}`}}>
+                                                <input type="checkbox" checked={fuzzyState.emblematic} onChange={e=>setFuzzyState({...fuzzyState,emblematic:e.target.checked})} style={{...chkIn,marginTop:3}}/>
+                                                <div style={{fontSize:13}}>
+                                                    <div style={{fontWeight:600}}>Condicao 2: Questao emblematica</div>
+                                                    <div style={{color:'var(--text-secondary)',marginTop:2}}>{cfg.emblemLabel}</div>
+                                                </div>
+                                            </div>
+                                        </label>
+
+                                        {/* Condition 3: No help */}
+                                        <label style={{cursor:'pointer',display:'block'}}>
+                                            <div style={{display:'flex',alignItems:'flex-start',gap:12,padding:'10px 14px',background:fuzzyState.noHelp?'#34c75910':'white',borderRadius:'var(--radius-sm)',marginBottom:8,border:`1px solid ${fuzzyState.noHelp?'#34c75930':'var(--border-light)'}`}}>
+                                                <input type="checkbox" checked={fuzzyState.noHelp} onChange={e=>setFuzzyState({...fuzzyState,noHelp:e.target.checked})} style={{...chkIn,marginTop:3}}/>
+                                                <div style={{fontSize:13}}>
+                                                    <div style={{fontWeight:600}}>Condicao 3: Auxilio de terceiros</div>
+                                                    <div style={{color:'var(--text-secondary)',marginTop:2}}>{cfg.noHelpLabel}</div>
+                                                </div>
+                                            </div>
+                                        </label>
+
+                                        {/* Result */}
+                                        <div style={{marginTop:12,padding:'14px 16px',borderRadius:'var(--radius-sm)',fontSize:14,fontWeight:600,
+                                            background:fuzzyResult.active?'#34c75915':'#ff3b3008',
+                                            border:`1px solid ${fuzzyResult.active?'#34c75940':'#ff3b3020'}`,
+                                            color:fuzzyResult.active?'#1a8c3a':'#cc2d24',
+                                        }}>
+                                            {fuzzyResult.active
+                                                ?`Logica fuzzy ATIVADA — a menor nota encontrada nos dominios sensiveis (${fuzzyResult.minScore}) sera aplicada a todas as atividades destes dominios.`
+                                                :'Logica fuzzy NAO ATIVADA — as tres condicoes acima precisam ser preenchidas simultaneamente.'}
+                                        </div>
+
+                                        {fuzzyResult.active&&scores.rawTotal!==scores.fuzzyTotal&&(
+                                            <div style={{marginTop:8,fontSize:13,color:'var(--text-secondary)'}}>
+                                                Escore original: {scores.rawTotal} | Escore fuzzy: {scores.fuzzyTotal} | Diferenca: {scores.rawTotal-scores.fuzzyTotal} pontos
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    </div>
+                )}
+
+                {/* STEPS 2-8: Domains */}
+                {currentDomain&&(
+                    <div className="fade-in" key={currentDomain.id}>
+                        <div style={{textAlign:'center',marginBottom:24}}>
+                            <h1 style={{fontSize:24,fontWeight:700,marginTop:8}}>{currentDomain.title}</h1>
+                            <p style={{color:'var(--text-secondary)',fontSize:14,marginTop:4}}>
+                                {currentDomain.items.filter(i=>answers[i.id]!==undefined).length} de {currentDomain.items.length} atividades respondidas
+                            </p>
+                            {fuzzyResult.active&&fuzzyResult.sensitiveDomains.includes(currentDomain.id)&&(
+                                <div style={{display:'inline-block',marginTop:8,padding:'4px 14px',borderRadius:100,background:'var(--purple-light)',color:'var(--purple)',fontSize:12,fontWeight:600}}>
+                                    Dominio sensivel — logica fuzzy ativa (nota minima: {fuzzyResult.minScore})
+                                </div>
+                            )}
+                        </div>
+                        <div style={{display:'flex',justifyContent:'flex-end',marginBottom:12}}>
+                            <button onClick={()=>{if(confirm(`Preencher todas as ${currentDomain.items.length} atividades com nota 100 (Independente)?`))fillDomain(currentDomain.id);}} style={{
+                                padding:'8px 16px',borderRadius:100,border:'1px solid var(--border)',
+                                background:'var(--surface)',color:'var(--text-secondary)',fontSize:13,fontWeight:500,cursor:'pointer',fontFamily:'inherit',transition:'all var(--transition)'}}>
+                                Preencher tudo com 100
+                            </button>
+                        </div>
+                        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                            {currentDomain.items.map((item,idx)=>(
+                                <div key={item.id} style={{animationDelay:`${idx*50}ms`}} className="fade-in">
+                                    <ItemCard item={item} answer={answers[item.id]} comment={comments[item.id]}
+                                        fuzzyActive={fuzzyResult.active&&fuzzyResult.sensitiveDomains.includes(currentDomain.id)}
+                                        fuzzyMin={fuzzyResult.minScore}
+                                        onAnswer={handleAnswer} onComment={handleComment}/>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* LAST STEP: Results */}
+                {step===stepNames.length-1&&(
+                    <ResultsPanel scores={scores} metadata={metadata} fuzzyState={fuzzyState} fuzzyResult={fuzzyResult} answers={answers} comments={comments}/>
+                )}
+            </main>
+
+            {/* Bottom bar */}
+            <div style={{position:'fixed',bottom:0,left:0,right:0,background:'rgba(245,245,247,.9)',backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',borderTop:'1px solid var(--border-light)',padding:'12px 24px',zIndex:50}}>
+                <div style={{maxWidth:720,margin:'0 auto',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+                    <button onClick={prevStep} disabled={step===0} style={{...btn('secondary'),opacity:step===0?.3:1,cursor:step===0?'default':'pointer'}}>Anterior</button>
+                    <div style={{display:'flex',gap:8}}>
+                        {step===stepNames.length-1&&(<>
+                            <button onClick={exportPDF} style={btn('primary')}>PDF</button>
+                            <button onClick={exportCSV} style={btn('outline')}>CSV</button>
+                            <button onClick={exportJSON} style={btn('outline')}>JSON</button>
+                            <button onClick={handleReset} style={{...btn('secondary'),color:'var(--red)'}}>Reiniciar</button>
+                        </>)}
+                    </div>
+                    {step<stepNames.length-1?(<button onClick={nextStep} style={btn('primary')}>Proximo</button>):(<div style={{width:80}}/>)}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* Styles */
+const cardSt={background:'var(--surface)',borderRadius:'var(--radius-lg)',padding:'24px 28px',boxShadow:'var(--shadow-sm)',border:'1px solid var(--border-light)'};
+const secTit={fontSize:18,fontWeight:700,letterSpacing:'-.01em',marginBottom:16};
+const selSt={width:'100%',padding:'12px 16px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:15,fontFamily:'inherit',color:'var(--text-primary)',background:'var(--surface)',cursor:'pointer'};
+const chkSt={display:'flex',alignItems:'flex-start',gap:12,padding:'12px 0',borderBottom:'1px solid var(--border-light)',cursor:'pointer',fontSize:14};
+const chkIn={width:20,height:20,borderRadius:6,accentColor:'var(--accent)',flexShrink:0,cursor:'pointer'};
+const btn=v=>({padding:'10px 20px',borderRadius:100,fontSize:14,fontWeight:600,fontFamily:'inherit',cursor:'pointer',border:'none',transition:'all var(--transition)',whiteSpace:'nowrap',
+    ...(v==='primary'?{background:'var(--text-primary)',color:'#fff'}:v==='outline'?{background:'var(--surface)',color:'var(--text-primary)',border:'1px solid var(--border)'}:{background:'var(--gray-200)',color:'var(--text-secondary)'})});
+const Inp=({label,value,onChange,type='text',multiline=false})=>(<div><label style={{display:'block',fontSize:13,fontWeight:500,color:'var(--text-secondary)',marginBottom:6}}>{label}</label>
+    {multiline?(<textarea value={value} onChange={e=>onChange(e.target.value)} rows={3} style={{width:'100%',padding:'10px 14px',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',fontSize:14,fontFamily:'inherit',color:'var(--text-primary)',resize:'vertical',background:'var(--surface-alt)'}}/>):
+    (<input type={type} value={value} onChange={e=>onChange(e.target.value)} style={{width:'100%',padding:'10px 14px',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',fontSize:14,fontFamily:'inherit',color:'var(--text-primary)',background:'var(--surface-alt)'}}/>)}</div>);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
