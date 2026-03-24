@@ -175,7 +175,7 @@ const S=(str)=>{
    FUZZY LOGIC ENGINE
    ================================================================ */
 function computeFuzzy(fuzzyType, emblematic, noHelp, answers) {
-    const empty = { active:false, sensitiveDomains:[], minScore:100, scoreConditionMet:false, allConditionsMet:false, conditionDetails:{} };
+    const empty = { active:false, sensitiveDomains:[], minScore:100, scoreConditionMet:false, anyConditionMet:false, conditionDetails:{} };
     if (!fuzzyType) return empty;
 
     const cfg = FUZZY_TYPES.find(f=>f.key===fuzzyType);
@@ -213,13 +213,12 @@ function computeFuzzy(fuzzyType, emblematic, noHelp, answers) {
     // Score condition: Condition1 (has25or50) OR Condition2 (all75)
     const scoreConditionMet = condition1Met || condition2Met;
 
-    // Condition 3: Emblematic question (user checkbox)
-    // Condition 4: No help available (user checkbox)
-    const allConditionsMet = scoreConditionMet && emblematic && noHelp;
+    // Ativacao: basta UMA das 4 condicoes ser preenchida (logica OU)
+    const anyConditionMet = scoreConditionMet || emblematic || noHelp;
 
     // When all conditions met, find min score across sensitive domain items
     let minScore = 100;
-    if (allConditionsMet) {
+    if (anyConditionMet) {
         SCALE.domains.filter(d => sensDomains.includes(d.id)).forEach(d => {
             d.items.forEach(i => {
                 if (answers[i.id] !== undefined && answers[i.id] < minScore) {
@@ -234,11 +233,11 @@ function computeFuzzy(fuzzyType, emblematic, noHelp, answers) {
     const answeredCount = sensItems.filter(i => answers[i.id] !== undefined).length;
 
     return {
-        active: allConditionsMet,
+        active: anyConditionMet,
         sensitiveDomains: sensDomains,
         minScore,
         scoreConditionMet,
-        allConditionsMet,
+        anyConditionMet,
         conditionDetails: {
             condition1Met,
             condition2Met,
@@ -521,11 +520,11 @@ const ResultsPanel=({scores,metadata,fuzzyState,fuzzyResult,answers,comments,sco
                             <p><strong>Cond. 2 (todas 75):</strong> {fuzzyResult.conditionDetails.condition2Met?'Preenchida':'Nao preenchida'}</p>
                             <p><strong>Cond. 3 (questao emblematica):</strong> {fuzzyState.emblematic?'Sim':'Nao'} — {c.emblemLabel}</p>
                             <p><strong>Cond. 4 (auxilio terceiros):</strong> {fuzzyState.noHelp?'Indisponivel':'Disponivel'}</p>
-                            <p style={{marginTop:4,fontSize:12,color:'var(--text-tertiary)'}}>Ativacao: (Cond.1 OU Cond.2) E Cond.3 E Cond.4</p>
+                            <p style={{marginTop:4,fontSize:12,color:'var(--text-tertiary)'}}>Ativacao: basta UMA das condicoes ser preenchida (Cond.1 OU Cond.2 OU Cond.3 OU Cond.4)</p>
                             <p style={{marginTop:8,fontWeight:600,color:fuzzyResult.active?'var(--green)':'var(--red)'}}>
                                 {fuzzyResult.active
                                     ?`ATIVADA — nota minima ${fuzzyResult.minScore} aplicada a todas as atividades dos dominios sensiveis.`
-                                    :'NAO ATIVADA — condicoes insuficientes.'}
+                                    :'NAO ATIVADA — nenhuma condicao preenchida.'}
                             </p>
                             {fuzzyResult.active&&<p><strong>Diferenca no escore:</strong> {scores.rawTotal-scores.fuzzyTotal} pontos</p>}
                         </>):null;})()}
@@ -751,7 +750,7 @@ const App=()=>{
             doc.text(`Cond. 2 (todas 75): ${fuzzyResult.conditionDetails.condition2Met?'Preenchida':'Nao preenchida'}`,14,y);y+=4;
             doc.text(S(`Cond. 3 (emblematica): ${fuzzyState.emblematic?'Sim':'Nao'} - ${cfg?.emblemLabel||''}`),14,y);y+=4;
             doc.text(`Cond. 4 (auxilio terceiros): ${fuzzyState.noHelp?'Indisponivel':'Disponivel'}`,14,y);y+=4;
-            doc.text(`Ativacao: (Cond.1 OU Cond.2) E Cond.3 E Cond.4`,14,y);y+=4;
+            doc.text(`Ativacao: basta UMA condicao (Cond.1 OU Cond.2 OU Cond.3 OU Cond.4)`,14,y);y+=4;
             doc.text(`Status: ${fuzzyResult.active?'ATIVADA - nota minima '+fuzzyResult.minScore+' aplicada':'NAO ATIVADA'}`,14,y);y+=6;
         }
 
@@ -838,7 +837,7 @@ const App=()=>{
                     <div className="fade-in">
                         <div style={{textAlign:'center',marginBottom:24}}>
                             <h1 style={{fontSize:24,fontWeight:700}}>Formulario 4 — Modelo Linguistico Fuzzy</h1>
-                            <p style={{color:'var(--text-secondary)',fontSize:14,maxWidth:520,margin:'8px auto 0'}}>Identifique situacoes de maior risco funcional. Quando as tres condicoes forem preenchidas, a menor nota nos dominios sensiveis sera aplicada a todas as atividades daqueles dominios.</p>
+                            <p style={{color:'var(--text-secondary)',fontSize:14,maxWidth:520,margin:'8px auto 0'}}>Identifique situacoes de maior risco funcional. Basta uma das condicoes abaixo ser preenchida para que a menor nota nos dominios sensiveis seja aplicada a todas as atividades daqueles dominios.</p>
                         </div>
                         <div style={{...cardSt,borderLeft:'4px solid var(--purple)'}}>
                             <label style={{display:'block',fontSize:14,fontWeight:600,color:'var(--text-secondary)',marginBottom:8}}>Tipo de deficiencia principal</label>
@@ -923,7 +922,7 @@ const App=()=>{
                                         }}>
                                             {fuzzyResult.active
                                                 ?`Logica fuzzy ATIVADA — a menor nota encontrada nos dominios sensiveis (${fuzzyResult.minScore}) sera aplicada a todas as atividades destes dominios.`
-                                                :'Logica fuzzy NAO ATIVADA — as quatro condicoes precisam ser preenchidas: (Cond.1 OU Cond.2) E Cond.3 E Cond.4.'}
+                                                :'Logica fuzzy NAO ATIVADA — nenhuma das condicoes foi preenchida.'}
                                         </div>
 
                                         {fuzzyResult.active&&scores.rawTotal!==scores.fuzzyTotal&&(
