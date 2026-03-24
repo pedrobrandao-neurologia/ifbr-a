@@ -115,7 +115,8 @@ const FUZZY_TYPES=[
         key:'auditiva', label:'Deficiencia Auditiva',
         sensitiveDomains:['d2','d7'],
         sensitiveDomainLabels:'Comunicacao e Socializacao',
-        scoreRule:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Comunicacao ou Socializacao; OU houve pontuacao 75 em TODAS as atividades destes dominios.',
+        condition1Label:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Comunicacao ou Socializacao.',
+        condition2Label:'Houve pontuacao 75 em TODAS as atividades do Dominio Comunicacao ou do Dominio Socializacao.',
         emblemLabel:'A surdez ocorreu antes dos 6 anos.',
         noHelpLabel:'Nao dispoe do auxilio de terceiros sempre que necessario.'
     },
@@ -123,7 +124,8 @@ const FUZZY_TYPES=[
         key:'intelectual', label:'Deficiencia Intelectual-Cognitiva e Mental',
         sensitiveDomains:['d5','d7'],
         sensitiveDomainLabels:'Vida Domestica e Socializacao',
-        scoreRule:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Vida Domestica ou Socializacao; OU houve pontuacao 75 em TODAS as atividades destes dominios.',
+        condition1Label:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Vida Domestica ou Socializacao.',
+        condition2Label:'Houve pontuacao 75 em TODAS as atividades do Dominio Vida Domestica ou do Dominio Socializacao.',
         emblemLabel:'Nao pode ficar sozinho em seguranca.',
         noHelpLabel:'Nao dispoe do auxilio de terceiros sempre que necessario.'
     },
@@ -131,7 +133,8 @@ const FUZZY_TYPES=[
         key:'motora', label:'Deficiencia Motora',
         sensitiveDomains:['d3','d4'],
         sensitiveDomainLabels:'Mobilidade e Cuidados Pessoais',
-        scoreRule:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Mobilidade ou Cuidados Pessoais; OU houve pontuacao 75 em TODAS as atividades destes dominios.',
+        condition1Label:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Mobilidade ou Cuidados Pessoais.',
+        condition2Label:'Houve pontuacao 75 em TODAS as atividades do Dominio Mobilidade ou do Dominio Cuidados Pessoais.',
         emblemLabel:'Desloca-se exclusivamente em cadeira de rodas.',
         noHelpLabel:'Nao dispoe do auxilio de terceiros sempre que necessario.'
     },
@@ -139,10 +142,20 @@ const FUZZY_TYPES=[
         key:'visual', label:'Deficiencia Visual',
         sensitiveDomains:['d3','d5'],
         sensitiveDomainLabels:'Mobilidade e Vida Domestica',
-        scoreRule:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Mobilidade ou Vida Domestica; OU houve pontuacao 75 em TODAS as atividades destes dominios.',
+        condition1Label:'Houve pontuacao 25 ou 50 em alguma atividade dos Dominios Mobilidade ou Vida Domestica.',
+        condition2Label:'Houve pontuacao 75 em TODAS as atividades do Dominio Mobilidade ou do Dominio Vida Domestica.',
         emblemLabel:'A pessoa ja nao enxergava ao nascer.',
         noHelpLabel:'Nao dispoe do auxilio de terceiros sempre que necessario.'
     }
+];
+
+/* Barrier categories */
+const BARRIER_CATS=[
+    {key:'PT',label:'Produtos e Tecnologia (P/T)'},
+    {key:'AM',label:'Ambiente (AM)'},
+    {key:'ApeR',label:'Apoio e Relacionamentos (ApeR)'},
+    {key:'AT',label:'Atitudes (AT)'},
+    {key:'SSP',label:'Servicos, Sistemas e Politicas (SSP)'}
 ];
 
 /* PDF-safe: strip all non-ASCII */
@@ -162,46 +175,63 @@ const S=(str)=>{
    FUZZY LOGIC ENGINE
    ================================================================ */
 function computeFuzzy(fuzzyType, emblematic, noHelp, answers) {
-    if (!fuzzyType) return { active:false, sensitiveDomains:[], minScore:100, scoreConditionMet:false, allConditionsMet:false, conditionDetails:{} };
+    const empty = { active:false, sensitiveDomains:[], minScore:100, scoreConditionMet:false, allConditionsMet:false, conditionDetails:{} };
+    if (!fuzzyType) return empty;
 
     const cfg = FUZZY_TYPES.find(f=>f.key===fuzzyType);
-    if (!cfg) return { active:false, sensitiveDomains:[], minScore:100, scoreConditionMet:false, allConditionsMet:false, conditionDetails:{} };
+    if (!cfg) return empty;
 
     const sensDomains = cfg.sensitiveDomains;
 
-    // Gather all items from sensitive domains
-    const sensItems = SCALE.domains
-        .filter(d => sensDomains.includes(d.id))
-        .flatMap(d => d.items);
+    // Per-domain analysis for conditions 1 and 2
+    const domainDetails = {};
+    let condition1Met = false; // has25or50 in ANY sensitive domain
+    let condition2Met = false; // all75 in ANY single sensitive domain
 
-    // Get answered scores in sensitive domains
-    const answeredScores = sensItems
-        .map(i => answers[i.id])
-        .filter(v => v !== undefined);
+    SCALE.domains.filter(d => sensDomains.includes(d.id)).forEach(d => {
+        const scores = d.items.map(i => answers[i.id]);
+        const answered = scores.filter(v => v !== undefined);
+        const allAnswered = answered.length === d.items.length;
 
-    const totalSensItems = sensItems.length;
-    const answeredCount = answeredScores.length;
+        // Condition 1: any item in this domain has score 25 or 50
+        const has25or50 = answered.some(s => s === 25 || s === 50);
+        // Condition 2: ALL items in this domain are 75 (domain must be fully answered)
+        const all75 = allAnswered && d.items.length > 0 && answered.every(s => s === 75);
 
-    // CONDITION 1: Score condition (automatic)
-    // "25 ou 50 em alguma atividade" OR "75 em TODAS as atividades"
-    const has25or50 = answeredScores.some(s => s === 25 || s === 50);
-    const allAnswered = answeredCount === totalSensItems;
-    const all75 = allAnswered && answeredScores.every(s => s === 75);
-    const scoreConditionMet = has25or50 || all75;
+        if (has25or50) condition1Met = true;
+        if (all75) condition2Met = true;
 
-    // CONDITION 2: Emblematic question (user checkbox)
-    // CONDITION 3: No help (user checkbox)
+        domainDetails[d.id] = {
+            title: d.title,
+            totalItems: d.items.length,
+            answeredCount: answered.length,
+            has25or50,
+            all75
+        };
+    });
+
+    // Score condition: Condition1 (has25or50) OR Condition2 (all75)
+    const scoreConditionMet = condition1Met || condition2Met;
+
+    // Condition 3: Emblematic question (user checkbox)
+    // Condition 4: No help available (user checkbox)
     const allConditionsMet = scoreConditionMet && emblematic && noHelp;
 
-    // When all conditions met, find min score across sensitive domains
+    // When all conditions met, find min score across sensitive domain items
     let minScore = 100;
     if (allConditionsMet) {
-        sensItems.forEach(i => {
-            if (answers[i.id] !== undefined && answers[i.id] < minScore) {
-                minScore = answers[i.id];
-            }
+        SCALE.domains.filter(d => sensDomains.includes(d.id)).forEach(d => {
+            d.items.forEach(i => {
+                if (answers[i.id] !== undefined && answers[i.id] < minScore) {
+                    minScore = answers[i.id];
+                }
+            });
         });
     }
+
+    // Gather totals for display
+    const sensItems = SCALE.domains.filter(d => sensDomains.includes(d.id)).flatMap(d => d.items);
+    const answeredCount = sensItems.filter(i => answers[i.id] !== undefined).length;
 
     return {
         active: allConditionsMet,
@@ -210,32 +240,32 @@ function computeFuzzy(fuzzyType, emblematic, noHelp, answers) {
         scoreConditionMet,
         allConditionsMet,
         conditionDetails: {
-            has25or50,
-            all75,
-            allAnswered,
+            condition1Met,
+            condition2Met,
+            domainDetails,
             answeredCount,
-            totalSensItems,
+            totalSensItems: sensItems.length,
             emblematic,
             noHelp
         }
     };
 }
 
-/* Compute scores: always returns both raw and fuzzy */
+/* Compute scores: returns raw sums, fuzzy sums, and domain averages */
 function computeScores(answers, fuzzyResult) {
     let rawTotal=0, fuzzyTotal=0, missingCount=0, missingItems=[];
-    let domRaw={}, domFuzzy={};
+    let domRaw={}, domFuzzy={}, domRawAvg={}, domFuzzyAvg={};
 
     SCALE.domains.forEach(dom => {
-        let sr=0, sf=0;
+        let sr=0, sf=0, answered=0;
         dom.items.forEach(item => {
             const v = answers[item.id];
             if (v === undefined) {
                 missingCount++;
                 missingItems.push(item.id);
             } else {
+                answered++;
                 sr += v;
-                // For fuzzy: if active and this domain is sensitive, use minScore
                 if (fuzzyResult.active && fuzzyResult.sensitiveDomains.includes(dom.id)) {
                     sf += fuzzyResult.minScore;
                 } else {
@@ -245,11 +275,18 @@ function computeScores(answers, fuzzyResult) {
         });
         domRaw[dom.id] = sr;
         domFuzzy[dom.id] = sf;
+        // Domain average: sum / total items in domain (25-100 range)
+        domRawAvg[dom.id] = dom.items.length > 0 ? Math.round((sr / dom.items.length) * 100) / 100 : 0;
+        domFuzzyAvg[dom.id] = dom.items.length > 0 ? Math.round((sf / dom.items.length) * 100) / 100 : 0;
         rawTotal += sr;
         fuzzyTotal += sf;
     });
 
-    return { rawTotal, fuzzyTotal, domRaw, domFuzzy, missingCount, missingItems };
+    // Total average: sum of domain averages / 7
+    const rawAvg = Math.round((Object.values(domRawAvg).reduce((a,b)=>a+b,0) / 7) * 100) / 100;
+    const fuzzyAvg = Math.round((Object.values(domFuzzyAvg).reduce((a,b)=>a+b,0) / 7) * 100) / 100;
+
+    return { rawTotal, fuzzyTotal, domRaw, domFuzzy, domRawAvg, domFuzzyAvg, rawAvg, fuzzyAvg, missingCount, missingItems };
 }
 
 /* ================================================================
@@ -300,9 +337,19 @@ const ScoreBtn=({level,selected,onClick})=>{
     </button>);
 };
 
-const ItemCard=({item,answer,comment,fuzzyActive,fuzzyMin,onAnswer,onComment})=>{
+const ItemCard=({item,answer,comment,fuzzyActive,fuzzyMin,onAnswer,onComment,scoreType,onScoreType,barrier,onBarrier})=>{
     const overridden=fuzzyActive&&answer!==undefined&&answer!==fuzzyMin;
     const [showCmt,setShowCmt]=useState(!!comment);
+    const isD=scoreType==='D';
+    const show25DBarrier=answer===25&&isD;
+
+    const updateBarrier=(patch)=>onBarrier(item.id,{...(barrier||{active:false,wouldChange:false,categories:{}}),...patch});
+    const toggleCat=(cat)=>{
+        const cats={...(barrier?.categories||{})};
+        cats[cat]=!cats[cat];
+        updateBarrier({categories:cats});
+    };
+
     return(
         <div className="fade-in" style={{
             background:'var(--surface)',borderRadius:'var(--radius-lg)',padding:'20px 24px',boxShadow:'var(--shadow-sm)',
@@ -316,6 +363,7 @@ const ItemCard=({item,answer,comment,fuzzyActive,fuzzyMin,onAnswer,onComment})=>
                 </div>
                 {answer!==undefined&&(
                     <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                        {scoreType&&<span style={{fontSize:10,fontWeight:600,padding:'2px 6px',borderRadius:4,background:isD?'var(--accent-light)':'var(--orange-light)',color:isD?'var(--accent)':'var(--orange)'}}>{isD?'Desempenho':'Capacidade'}</span>}
                         <div style={{
                             width:32,height:32,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
                             background:overridden?'var(--purple-light)':'var(--green-light)',
@@ -331,6 +379,53 @@ const ItemCard=({item,answer,comment,fuzzyActive,fuzzyMin,onAnswer,onComment})=>
             <div style={{display:'flex',gap:8}}>
                 {SCALE.scoreLevels.map(l=>(<ScoreBtn key={l.value} level={l} selected={answer} onClick={()=>onAnswer(item.id,l.value)}/>))}
             </div>
+
+            {/* Score type: D (desempenho) or C (capacidade) */}
+            {answer!==undefined&&(
+                <div style={{marginTop:12,display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontSize:12,fontWeight:500,color:'var(--text-tertiary)'}}>Tipo:</span>
+                    <button onClick={()=>onScoreType(item.id,'D')} style={{
+                        padding:'4px 12px',borderRadius:100,fontSize:12,fontWeight:600,cursor:'pointer',border:'none',
+                        background:isD?'var(--accent)':'var(--gray-200)',color:isD?'#fff':'var(--text-secondary)',transition:'all var(--transition)'
+                    }}>D - Desempenho</button>
+                    <button onClick={()=>onScoreType(item.id,'C')} style={{
+                        padding:'4px 12px',borderRadius:100,fontSize:12,fontWeight:600,cursor:'pointer',border:'none',
+                        background:scoreType==='C'?'var(--orange)':'var(--gray-200)',color:scoreType==='C'?'#fff':'var(--text-secondary)',transition:'all var(--transition)'
+                    }}>C - Capacidade</button>
+                </div>
+            )}
+
+            {/* Barriers: only for score 25 + type D */}
+            {show25DBarrier&&(
+                <div style={{marginTop:10,padding:'12px 14px',background:'var(--red-light)',borderRadius:'var(--radius-sm)',border:'1px solid #ff3b3020'}}>
+                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600,color:'var(--text-primary)'}}>
+                        <input type="checkbox" checked={barrier?.active||false} onChange={e=>updateBarrier({active:e.target.checked,...(!e.target.checked?{wouldChange:false,categories:{}}:{})})} style={{...chkIn,width:16,height:16}}/>
+                        Existe barreira externa?
+                    </label>
+                    {barrier?.active&&(
+                        <div style={{marginTop:8,paddingLeft:24}}>
+                            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12,color:'var(--text-secondary)',marginBottom:8}}>
+                                <input type="checkbox" checked={barrier?.wouldChange||false} onChange={e=>updateBarrier({wouldChange:e.target.checked})} style={{...chkIn,width:14,height:14}}/>
+                                A remocao da barreira mudaria a pontuacao?
+                            </label>
+                            {barrier?.wouldChange&&(
+                                <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>
+                                    {BARRIER_CATS.map(c=>{
+                                        const on=barrier?.categories?.[c.key]||false;
+                                        return(<button key={c.key} onClick={()=>toggleCat(c.key)} style={{
+                                            padding:'4px 10px',borderRadius:100,fontSize:11,fontWeight:600,cursor:'pointer',
+                                            border:`1px solid ${on?'var(--red)':'var(--border-light)'}`,
+                                            background:on?'var(--red-light)':'var(--surface)',color:on?'var(--red)':'var(--text-secondary)',
+                                            transition:'all var(--transition)'
+                                        }}>{c.label}</button>);
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {overridden&&(
                 <div style={{marginTop:10,padding:'8px 12px',background:'var(--purple-light)',borderRadius:'var(--radius-sm)',fontSize:12,color:'var(--purple)',fontWeight:500}}>
                     Logica fuzzy: nota original {answer}, corrigida para {fuzzyMin}
@@ -365,7 +460,7 @@ const ConditionRow=({met,label,detail,auto})=>(
 /* ================================================================
    RESULTS PANEL
    ================================================================ */
-const ResultsPanel=({scores,metadata,fuzzyState,fuzzyResult,answers,comments})=>{
+const ResultsPanel=({scores,metadata,fuzzyState,fuzzyResult,answers,comments,scoreTypes,barriers})=>{
     const showFuzzy = fuzzyState.type && fuzzyResult.active;
     return(
         <div className="scale-in" style={{maxWidth:960,margin:'0 auto',padding:'40px 24px 80px'}}>
@@ -383,6 +478,7 @@ const ResultsPanel=({scores,metadata,fuzzyState,fuzzyResult,answers,comments})=>
                     <div style={{fontSize:12,fontWeight:600,color:'var(--text-tertiary)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>Escore original (avaliador unico)</div>
                     <div style={{fontSize:48,fontWeight:700,letterSpacing:'-.03em',lineHeight:1}}>{scores.rawTotal}</div>
                     <div style={{fontSize:14,color:'var(--text-tertiary)',marginTop:4}}>de 4.100 pontos</div>
+                    <div style={{fontSize:13,color:'var(--text-secondary)',marginTop:6}}>Media ponderada: {scores.rawAvg.toFixed(2)} / 100</div>
                     <div style={{width:'100%',maxWidth:280,height:5,background:'var(--gray-200)',borderRadius:3,margin:'16px auto 0',overflow:'hidden'}}>
                         <div style={{width:`${Math.round(scores.rawTotal/4100*100)}%`,height:'100%',background:'var(--accent)',borderRadius:3,transition:'width .6s ease'}}/>
                     </div>
@@ -392,6 +488,7 @@ const ResultsPanel=({scores,metadata,fuzzyState,fuzzyResult,answers,comments})=>
                         <div style={{fontSize:12,fontWeight:600,color:'var(--purple)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>Escore com logica fuzzy</div>
                         <div style={{fontSize:48,fontWeight:700,letterSpacing:'-.03em',lineHeight:1,color:'var(--purple)'}}>{scores.fuzzyTotal}</div>
                         <div style={{fontSize:14,color:'var(--text-tertiary)',marginTop:4}}>de 4.100 pontos</div>
+                        <div style={{fontSize:13,color:'var(--text-secondary)',marginTop:6}}>Media ponderada: {scores.fuzzyAvg.toFixed(2)} / 100</div>
                         <div style={{width:'100%',maxWidth:280,height:5,background:'var(--purple-light)',borderRadius:3,margin:'16px auto 0',overflow:'hidden'}}>
                             <div style={{width:`${Math.round(scores.fuzzyTotal/4100*100)}%`,height:'100%',background:'var(--purple)',borderRadius:3,transition:'width .6s ease'}}/>
                         </div>
@@ -420,16 +517,15 @@ const ResultsPanel=({scores,metadata,fuzzyState,fuzzyResult,answers,comments})=>
                         {(()=>{const c=FUZZY_TYPES.find(f=>f.key===fuzzyState.type);return c?(<>
                             <p><strong>Tipo:</strong> {c.label}</p>
                             <p><strong>Dominios sensiveis:</strong> {c.sensitiveDomainLabels}</p>
-                            <p><strong>Condicao do escore:</strong> {fuzzyResult.scoreConditionMet?'Preenchida':'Nao preenchida'}
-                                {fuzzyResult.conditionDetails.has25or50&&' (nota 25 ou 50 detectada)'}
-                                {fuzzyResult.conditionDetails.all75&&' (todas as atividades com nota 75)'}
-                            </p>
-                            <p><strong>Questao emblematica:</strong> {fuzzyState.emblematic?'Sim':'Nao'}</p>
-                            <p><strong>Auxilio de terceiros indisponivel:</strong> {fuzzyState.noHelp?'Sim':'Nao'}</p>
+                            <p><strong>Cond. 1 (nota 25/50):</strong> {fuzzyResult.conditionDetails.condition1Met?'Preenchida':'Nao preenchida'}</p>
+                            <p><strong>Cond. 2 (todas 75):</strong> {fuzzyResult.conditionDetails.condition2Met?'Preenchida':'Nao preenchida'}</p>
+                            <p><strong>Cond. 3 (questao emblematica):</strong> {fuzzyState.emblematic?'Sim':'Nao'} — {c.emblemLabel}</p>
+                            <p><strong>Cond. 4 (auxilio terceiros):</strong> {fuzzyState.noHelp?'Indisponivel':'Disponivel'}</p>
+                            <p style={{marginTop:4,fontSize:12,color:'var(--text-tertiary)'}}>Ativacao: (Cond.1 OU Cond.2) E Cond.3 E Cond.4</p>
                             <p style={{marginTop:8,fontWeight:600,color:fuzzyResult.active?'var(--green)':'var(--red)'}}>
                                 {fuzzyResult.active
                                     ?`ATIVADA — nota minima ${fuzzyResult.minScore} aplicada a todas as atividades dos dominios sensiveis.`
-                                    :'NAO ATIVADA — uma ou mais condicoes nao foram preenchidas.'}
+                                    :'NAO ATIVADA — condicoes insuficientes.'}
                             </p>
                             {fuzzyResult.active&&<p><strong>Diferenca no escore:</strong> {scores.rawTotal-scores.fuzzyTotal} pontos</p>}
                         </>):null;})()}
@@ -453,33 +549,38 @@ const ResultsPanel=({scores,metadata,fuzzyState,fuzzyResult,answers,comments})=>
                                     {isSens&&<span style={{fontSize:10,background:'var(--purple-light)',color:'var(--purple)',padding:'2px 8px',borderRadius:100,fontWeight:600}}>FUZZY</span>}
                                 </div>
                                 <div style={{display:'flex',gap:16,fontSize:13}}>
-                                    <span style={{color:'var(--text-secondary)'}}>Original: <strong>{dR}</strong>/{mx}</span>
-                                    {isSens&&<span style={{color:'var(--purple)'}}>Fuzzy: <strong>{dF}</strong>/{mx}</span>}
+                                    <span style={{color:'var(--text-secondary)'}}>Original: <strong>{dR}</strong>/{mx} (media: {scores.domRawAvg[dom.id].toFixed(1)})</span>
+                                    {isSens&&<span style={{color:'var(--purple)'}}>Fuzzy: <strong>{dF}</strong>/{mx} (media: {scores.domFuzzyAvg[dom.id].toFixed(1)})</span>}
                                 </div>
                             </div>
                             {/* Column header */}
-                            <div style={{display:'flex',alignItems:'center',gap:12,padding:'4px 0',fontSize:11,color:'var(--text-tertiary)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.03em',borderBottom:'1px solid var(--gray-100)'}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',fontSize:11,color:'var(--text-tertiary)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.03em',borderBottom:'1px solid var(--gray-100)'}}>
                                 <span style={{minWidth:28}}>Item</span>
                                 <span style={{flex:1}}>Atividade</span>
-                                <span style={{minWidth:40,textAlign:'right'}}>Nota</span>
-                                {isSens&&<span style={{minWidth:40,textAlign:'right',color:'var(--purple)'}}>Fuzzy</span>}
-                                <span style={{minWidth:100}}>Comentario</span>
+                                <span style={{minWidth:24,textAlign:'center'}}>D/C</span>
+                                <span style={{minWidth:36,textAlign:'right'}}>Nota</span>
+                                {isSens&&<span style={{minWidth:36,textAlign:'right',color:'var(--purple)'}}>Fuzzy</span>}
+                                <span style={{minWidth:80}}>Barreiras</span>
                             </div>
                             {dom.items.map(item=>{
                                 const raw=answers[item.id];
                                 const fin=isSens&&raw!==undefined?fuzzyResult.minScore:raw;
                                 const changed=isSens&&raw!==undefined&&raw!==fin;
+                                const sType=scoreTypes[item.id];
+                                const bar=barriers[item.id];
+                                const barCats=bar?.active&&bar?.wouldChange?BARRIER_CATS.filter(c=>bar.categories?.[c.key]).map(c=>c.key).join(', '):'';
                                 return(
-                                    <div key={item.id} style={{display:'flex',alignItems:'center',gap:12,padding:'5px 0',fontSize:13,borderBottom:'1px solid var(--gray-100)'}}>
+                                    <div key={item.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',fontSize:13,borderBottom:'1px solid var(--gray-100)'}}>
                                         <span style={{color:'var(--text-tertiary)',minWidth:28,fontFamily:'monospace',fontSize:12}}>{item.id}</span>
                                         <span style={{flex:1,color:'var(--text-primary)'}}>{item.text}</span>
-                                        <span style={{fontWeight:600,minWidth:40,textAlign:'right',color:raw!==undefined?(SCALE.scoreLevels.find(l=>l.value===raw)?.color||'var(--text-secondary)'):'var(--text-tertiary)'}}>
+                                        <span style={{minWidth:24,textAlign:'center',fontSize:11,fontWeight:600,color:sType==='C'?'var(--orange)':'var(--text-tertiary)'}}>{sType||'--'}</span>
+                                        <span style={{fontWeight:600,minWidth:36,textAlign:'right',color:raw!==undefined?(SCALE.scoreLevels.find(l=>l.value===raw)?.color||'var(--text-secondary)'):'var(--text-tertiary)'}}>
                                             {raw!==undefined?raw:'--'}
                                         </span>
-                                        {isSens&&<span style={{fontWeight:600,minWidth:40,textAlign:'right',color:changed?'var(--purple)':'var(--text-tertiary)'}}>
+                                        {isSens&&<span style={{fontWeight:600,minWidth:36,textAlign:'right',color:changed?'var(--purple)':'var(--text-tertiary)'}}>
                                             {raw!==undefined?fin:'--'}
                                         </span>}
-                                        <span style={{fontSize:11,color:'var(--text-tertiary)',minWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{comments[item.id]||''}</span>
+                                        <span style={{fontSize:10,color:barCats?'var(--red)':'var(--text-tertiary)',minWidth:80,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{barCats||'--'}</span>
                                     </div>
                                 );
                             })}
@@ -519,17 +620,27 @@ const App=()=>{
     const [metadata,setMeta]=useState({participantId:'',evaluatorName:'',evaluationDate:new Date().toISOString().split('T')[0],center:'',observations:''});
     const [answers,setAnswers]=useState({});
     const [comments,setComments]=useState({});
+    const [scoreTypes,setScoreTypes]=useState({}); // { itemId: 'D' | 'C' }
+    const [barriers,setBarriers]=useState({}); // { itemId: { active, wouldChange, categories:{PT,AM,ApeR,AT,SSP} } }
     const [consent,setConsent]=useState(false);
     const [fuzzyState,setFuzzyState]=useState({type:'',emblematic:false,noHelp:false});
     const [step,setStep]=useState(0);
 
     /* Persistence */
-    useEffect(()=>{try{const s=localStorage.getItem('ifbra_v4');if(s){const p=JSON.parse(s);if(p.answers)setAnswers(p.answers);if(p.comments)setComments(p.comments);if(p.metadata)setMeta(p.metadata);if(p.fuzzyState)setFuzzyState(p.fuzzyState);if(p.consent)setConsent(p.consent);}}catch(e){}},[]);
-    useEffect(()=>{if(consent)localStorage.setItem('ifbra_v4',JSON.stringify({answers,comments,metadata,fuzzyState,consent}));else localStorage.removeItem('ifbra_v4');},[answers,comments,metadata,fuzzyState,consent]);
+    useEffect(()=>{try{const s=localStorage.getItem('ifbra_v5');if(s){const p=JSON.parse(s);if(p.answers)setAnswers(p.answers);if(p.comments)setComments(p.comments);if(p.scoreTypes)setScoreTypes(p.scoreTypes);if(p.barriers)setBarriers(p.barriers);if(p.metadata)setMeta(p.metadata);if(p.fuzzyState)setFuzzyState(p.fuzzyState);if(p.consent)setConsent(p.consent);}else{const s4=localStorage.getItem('ifbra_v4');if(s4){const p=JSON.parse(s4);if(p.answers)setAnswers(p.answers);if(p.comments)setComments(p.comments);if(p.metadata)setMeta(p.metadata);if(p.fuzzyState)setFuzzyState(p.fuzzyState);if(p.consent)setConsent(p.consent);}}}catch(e){}},[]);
+    useEffect(()=>{if(consent)localStorage.setItem('ifbra_v5',JSON.stringify({answers,comments,scoreTypes,barriers,metadata,fuzzyState,consent}));else{localStorage.removeItem('ifbra_v5');localStorage.removeItem('ifbra_v4');}},[answers,comments,scoreTypes,barriers,metadata,fuzzyState,consent]);
 
-    const handleAnswer=(id,val)=>setAnswers(p=>({...p,[id]:val}));
+    const handleAnswer=(id,val)=>{
+        setAnswers(p=>({...p,[id]:val}));
+        // Auto-set score type to D if not yet set
+        if(!scoreTypes[id])setScoreTypes(p=>({...p,[id]:'D'}));
+        // Clear barriers if score changes from 25
+        if(val!==25)setBarriers(p=>{const n={...p};delete n[id];return n;});
+    };
     const handleComment=(id,txt)=>setComments(p=>({...p,[id]:txt}));
-    const fillDomain=(domId)=>{const dom=SCALE.domains.find(d=>d.id===domId);if(!dom)return;setAnswers(prev=>{const n={...prev};dom.items.forEach(i=>{n[i.id]=100;});return n;});};
+    const handleScoreType=(id,type)=>setScoreTypes(p=>({...p,[id]:type}));
+    const handleBarrier=(id,data)=>setBarriers(p=>({...p,[id]:data}));
+    const fillDomain=(domId)=>{const dom=SCALE.domains.find(d=>d.id===domId);if(!dom)return;setAnswers(prev=>{const n={...prev};dom.items.forEach(i=>{n[i.id]=100;});return n;});setScoreTypes(prev=>{const n={...prev};dom.items.forEach(i=>{n[i.id]='D';});return n;});};
 
     /* Compute fuzzy */
     const fuzzyResult = useMemo(()=>
@@ -564,11 +675,19 @@ const App=()=>{
                 active:fuzzyResult.active,scoreConditionMet:fuzzyResult.scoreConditionMet,minScoreApplied:fuzzyResult.active?fuzzyResult.minScore:null,
                 sensitiveDomains:fuzzyResult.sensitiveDomains},
             scores:{rawTotal:scores.rawTotal,fuzzyTotal:fuzzyResult.active?scores.fuzzyTotal:null,maxSingleEvaluator:4100,
-                fuzzyDifference:fuzzyResult.active?scores.rawTotal-scores.fuzzyTotal:0},
+                fuzzyDifference:fuzzyResult.active?scores.rawTotal-scores.fuzzyTotal:0,
+                rawAvg:scores.rawAvg,fuzzyAvg:fuzzyResult.active?scores.fuzzyAvg:null},
             domains:SCALE.domains.map(d=>{
                 const isSens=fuzzyResult.active&&fuzzyResult.sensitiveDomains.includes(d.id);
-                return{id:d.id,title:d.title,rawScore:scores.domRaw[d.id],fuzzyScore:isSens?scores.domFuzzy[d.id]:null,maxScore:d.items.length*100,fuzzyApplied:isSens,
-                    items:d.items.map(i=>({id:i.id,text:i.text,rawScore:answers[i.id]??null,fuzzyScore:(isSens&&answers[i.id]!==undefined)?fuzzyResult.minScore:null,comment:comments[i.id]||''}))};
+                return{id:d.id,title:d.title,rawScore:scores.domRaw[d.id],fuzzyScore:isSens?scores.domFuzzy[d.id]:null,
+                    rawAvg:scores.domRawAvg[d.id],fuzzyAvg:isSens?scores.domFuzzyAvg[d.id]:null,
+                    maxScore:d.items.length*100,fuzzyApplied:isSens,
+                    items:d.items.map(i=>{
+                        const bar=barriers[i.id];
+                        return{id:i.id,text:i.text,rawScore:answers[i.id]??null,fuzzyScore:(isSens&&answers[i.id]!==undefined)?fuzzyResult.minScore:null,
+                            scoreType:scoreTypes[i.id]||null,comment:comments[i.id]||'',
+                            barrier:bar?.active?{wouldChange:bar.wouldChange||false,categories:bar.wouldChange?Object.entries(bar.categories||{}).filter(([,v])=>v).map(([k])=>k):[]}:null};
+                    })};
             })
         };
         const b=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
@@ -583,8 +702,10 @@ const App=()=>{
             h.push(`${d.id}_raw`,`${d.id}_fuzzy`,`${d.id}_max`);
             r.push(scores.domRaw[d.id],isSens?scores.domFuzzy[d.id]:'',d.items.length*100);
             d.items.forEach(i=>{
-                h.push(`item_${i.id}_raw`,`item_${i.id}_fuzzy`,`item_${i.id}_comment`);
-                r.push(answers[i.id]??'',(isSens&&answers[i.id]!==undefined)?fuzzyResult.minScore:'',`"${(comments[i.id]||'').replace(/"/g,'""')}"`);
+                const bar=barriers[i.id];
+                const barCats=bar?.active&&bar?.wouldChange?BARRIER_CATS.filter(c=>bar.categories?.[c.key]).map(c=>c.key).join(';'):'';
+                h.push(`item_${i.id}_raw`,`item_${i.id}_fuzzy`,`item_${i.id}_type`,`item_${i.id}_barriers`,`item_${i.id}_comment`);
+                r.push(answers[i.id]??'',(isSens&&answers[i.id]!==undefined)?fuzzyResult.minScore:'',scoreTypes[i.id]||'',barCats,`"${(comments[i.id]||'').replace(/"/g,'""')}"`);
             });
         });
         const b=new Blob([h.join(',')+'\n'+r.join(',')],{type:'text/csv;charset=utf-8;'});
@@ -610,8 +731,8 @@ const App=()=>{
         doc.text(`Centro: ${S(metadata.center||'---')}`,14,y);y+=10;
 
         doc.setFontSize(13);doc.setFont(undefined,'bold');
-        doc.text(`Escore original (avaliador unico): ${scores.rawTotal} / 4.100`,14,y);y+=7;
-        if(showFuzzy){doc.text(`Escore com logica fuzzy: ${scores.fuzzyTotal} / 4.100`,14,y);y+=7;
+        doc.text(`Escore original (avaliador unico): ${scores.rawTotal} / 4.100 (media: ${scores.rawAvg.toFixed(2)})`,14,y);y+=7;
+        if(showFuzzy){doc.text(`Escore com logica fuzzy: ${scores.fuzzyTotal} / 4.100 (media: ${scores.fuzzyAvg.toFixed(2)})`,14,y);y+=7;
             doc.setFontSize(10);doc.setFont(undefined,'normal');
             doc.text(`Diferenca: ${scores.rawTotal-scores.fuzzyTotal} pontos reduzidos pela logica fuzzy`,14,y);y+=6;
         }
@@ -626,9 +747,11 @@ const App=()=>{
             doc.text(S(`Logica Fuzzy - Formulario 4: ${cfg?.label||''}`),14,y);y+=5;
             doc.setFont(undefined,'normal');doc.setFontSize(9);
             doc.text(S(`Dominios sensiveis: ${cfg?.sensitiveDomainLabels||''}`),14,y);y+=4;
-            doc.text(`Condicao do escore: ${fuzzyResult.scoreConditionMet?'Preenchida':'Nao preenchida'}`,14,y);y+=4;
-            doc.text(S(`Questao emblematica: ${fuzzyState.emblematic?'Sim':'Nao'} - ${cfg?.emblemLabel||''}`),14,y);y+=4;
-            doc.text(`Auxilio de terceiros indisponivel: ${fuzzyState.noHelp?'Sim':'Nao'}`,14,y);y+=4;
+            doc.text(`Cond. 1 (nota 25/50): ${fuzzyResult.conditionDetails.condition1Met?'Preenchida':'Nao preenchida'}`,14,y);y+=4;
+            doc.text(`Cond. 2 (todas 75): ${fuzzyResult.conditionDetails.condition2Met?'Preenchida':'Nao preenchida'}`,14,y);y+=4;
+            doc.text(S(`Cond. 3 (emblematica): ${fuzzyState.emblematic?'Sim':'Nao'} - ${cfg?.emblemLabel||''}`),14,y);y+=4;
+            doc.text(`Cond. 4 (auxilio terceiros): ${fuzzyState.noHelp?'Indisponivel':'Disponivel'}`,14,y);y+=4;
+            doc.text(`Ativacao: (Cond.1 OU Cond.2) E Cond.3 E Cond.4`,14,y);y+=4;
             doc.text(`Status: ${fuzzyResult.active?'ATIVADA - nota minima '+fuzzyResult.minScore+' aplicada':'NAO ATIVADA'}`,14,y);y+=6;
         }
 
@@ -641,23 +764,26 @@ const App=()=>{
         SCALE.domains.forEach(d=>{
             const isSens=showFuzzy&&fuzzyResult.sensitiveDomains.includes(d.id);
             const dR=scores.domRaw[d.id],dF=isSens?scores.domFuzzy[d.id]:dR,mx=d.items.length*100;
-            let hdr=S(d.title)+` | Original: ${dR}/${mx}`;
-            if(isSens)hdr+=` | Fuzzy: ${dF}/${mx}`;
-            rows.push([{content:hdr,colSpan:5,styles:{fillColor:[235,235,240],fontStyle:'bold',fontSize:9}}]);
+            let hdr=S(d.title)+` | Original: ${dR}/${mx} (media: ${scores.domRawAvg[d.id].toFixed(1)})`;
+            if(isSens)hdr+=` | Fuzzy: ${dF}/${mx} (media: ${scores.domFuzzyAvg[d.id].toFixed(1)})`;
+            rows.push([{content:hdr,colSpan:7,styles:{fillColor:[235,235,240],fontStyle:'bold',fontSize:9}}]);
             d.items.forEach(i=>{
                 const raw=answers[i.id];
                 const fin=(isSens&&raw!==undefined)?fuzzyResult.minScore:raw;
-                rows.push([i.id,S(i.text),raw!==undefined?String(raw):'---',(isSens&&raw!==undefined)?String(fin):'',S(comments[i.id]||'')]);
+                const sType=scoreTypes[i.id]||'';
+                const bar=barriers[i.id];
+                const barCats=bar?.active&&bar?.wouldChange?BARRIER_CATS.filter(c=>bar.categories?.[c.key]).map(c=>c.key).join(', '):'';
+                rows.push([i.id,S(i.text),sType,raw!==undefined?String(raw):'---',(isSens&&raw!==undefined)?String(fin):'',barCats,S(comments[i.id]||'')]);
             });
         });
 
         doc.autoTable({
             startY:y,
-            head:[[S('#'),S('Atividade'),'Nota',showFuzzy?'Fuzzy':'',S('Comentario')]],
+            head:[[S('#'),S('Atividade'),'D/C','Nota',showFuzzy?'Fuzzy':'','Barreiras',S('Comentario')]],
             body:rows,theme:'grid',
-            styles:{fontSize:8,font:'helvetica',cellPadding:2},
+            styles:{fontSize:7,font:'helvetica',cellPadding:2},
             headStyles:{fillColor:[30,30,30]},
-            columnStyles:{0:{cellWidth:10},1:{cellWidth:70},2:{cellWidth:14},3:{cellWidth:14}}
+            columnStyles:{0:{cellWidth:9},1:{cellWidth:52},2:{cellWidth:8},3:{cellWidth:10},4:{cellWidth:10},5:{cellWidth:28}}
         });
 
         const lastY=doc.lastAutoTable.finalY+10;
@@ -672,7 +798,7 @@ const App=()=>{
         doc.save(gfn('pdf'));
     };
 
-    const handleReset=()=>{if(!confirm('Apagar todos os dados e recomecar?'))return;setAnswers({});setComments({});setMeta({participantId:'',evaluatorName:'',evaluationDate:new Date().toISOString().split('T')[0],center:'',observations:''});setFuzzyState({type:'',emblematic:false,noHelp:false});setStep(0);localStorage.removeItem('ifbra_v4');};
+    const handleReset=()=>{if(!confirm('Apagar todos os dados e recomecar?'))return;setAnswers({});setComments({});setScoreTypes({});setBarriers({});setMeta({participantId:'',evaluatorName:'',evaluationDate:new Date().toISOString().split('T')[0],center:'',observations:''});setFuzzyState({type:'',emblematic:false,noHelp:false});setStep(0);localStorage.removeItem('ifbra_v5');localStorage.removeItem('ifbra_v4');};
 
     const domainIdx=step-2;
     const currentDomain=domainIdx>=0&&domainIdx<SCALE.domains.length?SCALE.domains[domainIdx]:null;
@@ -733,41 +859,57 @@ const App=()=>{
                                             Dominios sensiveis: <strong>{cfg.sensitiveDomainLabels}</strong>
                                         </p>
 
-                                        {/* Condition 1: Score (automatic) */}
+                                        {/* Condition 1: has 25 or 50 (automatic) */}
                                         <ConditionRow
-                                            met={fuzzyResult.scoreConditionMet}
+                                            met={fuzzyResult.conditionDetails.condition1Met}
                                             auto={true}
-                                            label="Condicao 1: Escore nos dominios sensiveis"
+                                            label="Condicao 1: Pontuacao 25 ou 50 em alguma atividade"
                                             detail={<>
-                                                <span>{cfg.scoreRule}</span>
-                                                {fuzzyResult.conditionDetails.answeredCount!==undefined&&(
+                                                <span>{cfg.condition1Label}</span>
+                                                {fuzzyResult.conditionDetails.domainDetails&&(
                                                     <div style={{marginTop:6,fontSize:12,color:'var(--text-tertiary)'}}>
-                                                        {fuzzyResult.conditionDetails.answeredCount} de {fuzzyResult.conditionDetails.totalSensItems} atividades respondidas nos dominios sensiveis.
-                                                        {fuzzyResult.conditionDetails.has25or50&&' Detectada nota 25 ou 50.'}
-                                                        {fuzzyResult.conditionDetails.all75&&' Todas com nota 75.'}
-                                                        {!fuzzyResult.scoreConditionMet&&fuzzyResult.conditionDetails.answeredCount>0&&' Nenhuma nota 25/50 detectada e nem todas sao 75.'}
+                                                        {Object.entries(fuzzyResult.conditionDetails.domainDetails).map(([did,dd])=>(
+                                                            <div key={did}>{dd.title}: {dd.answeredCount}/{dd.totalItems} respondidas{dd.has25or50?' — nota 25 ou 50 detectada':dd.answeredCount>0?' — nenhuma nota 25/50':''}</div>
+                                                        ))}
                                                     </div>
                                                 )}
                                             </>}
                                         />
 
-                                        {/* Condition 2: Emblematic */}
+                                        {/* Condition 2: all 75 (automatic) */}
+                                        <ConditionRow
+                                            met={fuzzyResult.conditionDetails.condition2Met}
+                                            auto={true}
+                                            label="Condicao 2: Todas as atividades com nota 75 em um dominio"
+                                            detail={<>
+                                                <span>{cfg.condition2Label}</span>
+                                                {fuzzyResult.conditionDetails.domainDetails&&(
+                                                    <div style={{marginTop:6,fontSize:12,color:'var(--text-tertiary)'}}>
+                                                        {Object.entries(fuzzyResult.conditionDetails.domainDetails).map(([did,dd])=>(
+                                                            <div key={did}>{dd.title}: {dd.all75?'TODAS com nota 75':dd.answeredCount<dd.totalItems?`${dd.answeredCount}/${dd.totalItems} respondidas`:'nem todas com nota 75'}</div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </>}
+                                        />
+
+                                        {/* Condition 3: Emblematic */}
                                         <label style={{cursor:'pointer',display:'block'}}>
                                             <div style={{display:'flex',alignItems:'flex-start',gap:12,padding:'10px 14px',background:fuzzyState.emblematic?'#34c75910':'white',borderRadius:'var(--radius-sm)',marginBottom:8,border:`1px solid ${fuzzyState.emblematic?'#34c75930':'var(--border-light)'}`}}>
                                                 <input type="checkbox" checked={fuzzyState.emblematic} onChange={e=>setFuzzyState({...fuzzyState,emblematic:e.target.checked})} style={{...chkIn,marginTop:3}}/>
                                                 <div style={{fontSize:13}}>
-                                                    <div style={{fontWeight:600}}>Condicao 2: Questao emblematica</div>
+                                                    <div style={{fontWeight:600}}>Condicao 3: Questao emblematica</div>
                                                     <div style={{color:'var(--text-secondary)',marginTop:2}}>{cfg.emblemLabel}</div>
                                                 </div>
                                             </div>
                                         </label>
 
-                                        {/* Condition 3: No help */}
+                                        {/* Condition 4: No help */}
                                         <label style={{cursor:'pointer',display:'block'}}>
                                             <div style={{display:'flex',alignItems:'flex-start',gap:12,padding:'10px 14px',background:fuzzyState.noHelp?'#34c75910':'white',borderRadius:'var(--radius-sm)',marginBottom:8,border:`1px solid ${fuzzyState.noHelp?'#34c75930':'var(--border-light)'}`}}>
                                                 <input type="checkbox" checked={fuzzyState.noHelp} onChange={e=>setFuzzyState({...fuzzyState,noHelp:e.target.checked})} style={{...chkIn,marginTop:3}}/>
                                                 <div style={{fontSize:13}}>
-                                                    <div style={{fontWeight:600}}>Condicao 3: Auxilio de terceiros</div>
+                                                    <div style={{fontWeight:600}}>Condicao 4: Auxilio de terceiros</div>
                                                     <div style={{color:'var(--text-secondary)',marginTop:2}}>{cfg.noHelpLabel}</div>
                                                 </div>
                                             </div>
@@ -781,7 +923,7 @@ const App=()=>{
                                         }}>
                                             {fuzzyResult.active
                                                 ?`Logica fuzzy ATIVADA — a menor nota encontrada nos dominios sensiveis (${fuzzyResult.minScore}) sera aplicada a todas as atividades destes dominios.`
-                                                :'Logica fuzzy NAO ATIVADA — as tres condicoes acima precisam ser preenchidas simultaneamente.'}
+                                                :'Logica fuzzy NAO ATIVADA — as quatro condicoes precisam ser preenchidas: (Cond.1 OU Cond.2) E Cond.3 E Cond.4.'}
                                         </div>
 
                                         {fuzzyResult.active&&scores.rawTotal!==scores.fuzzyTotal&&(
@@ -823,7 +965,9 @@ const App=()=>{
                                     <ItemCard item={item} answer={answers[item.id]} comment={comments[item.id]}
                                         fuzzyActive={fuzzyResult.active&&fuzzyResult.sensitiveDomains.includes(currentDomain.id)}
                                         fuzzyMin={fuzzyResult.minScore}
-                                        onAnswer={handleAnswer} onComment={handleComment}/>
+                                        scoreType={scoreTypes[item.id]} barrier={barriers[item.id]}
+                                        onAnswer={handleAnswer} onComment={handleComment}
+                                        onScoreType={handleScoreType} onBarrier={handleBarrier}/>
                                 </div>
                             ))}
                         </div>
@@ -832,7 +976,7 @@ const App=()=>{
 
                 {/* LAST STEP: Results */}
                 {step===stepNames.length-1&&(
-                    <ResultsPanel scores={scores} metadata={metadata} fuzzyState={fuzzyState} fuzzyResult={fuzzyResult} answers={answers} comments={comments}/>
+                    <ResultsPanel scores={scores} metadata={metadata} fuzzyState={fuzzyState} fuzzyResult={fuzzyResult} answers={answers} comments={comments} scoreTypes={scoreTypes} barriers={barriers}/>
                 )}
             </main>
 
